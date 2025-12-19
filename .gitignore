@@ -2,4 +2,26 @@ node_modules
 # Keep environment variables out of version control
 .env
 
-/generated/prisma
+generated/
+
+
+
+
+
+#Documentation Excluded for now till the final version
+/.idea/compiler.xml
+/out/missfont.log
+/out/Software_Project.aux
+/out/Software_Project.log
+/Documentations/Software_Project.pdf
+/out/Software_Project.pdf
+/out/Software_Project.synctex.gz
+/Documentations/Software_Project.tex
+/out/Software_Project.toc
+/out/Software_Project_Persian.aux
+/out/Software_Project_Persian.log
+/Documentations/Software_Project_Persian.pdf
+/out/Software_Project_Persian.pdf
+/out/Software_Project_Persian.synctex.gz
+/Documentations/Software_Project_Persian.tex
+/out/Software_Project_Persian.toc
