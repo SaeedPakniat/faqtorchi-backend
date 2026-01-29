@@ -1,0 +1,225 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+
+\lstset{
+    backgroundcolor=\color{codegray},
+    basicstyle=\ttfamily\small,
+    frame=single,
+    breaklines=true,
+    showstringspaces=false
+}
+% --- Custom languages for listings (TypeScript + Prisma) ---
+\lstdefinelanguage{TypeScript}{
+    keywords={break, case, catch, class, const, continue, debugger, default, delete, do, else, enum, export, extends, false, finally, for, function, if, import, in, instanceof, new, null, return, super, switch, this, throw, true, try, typeof, var, void, while, with, as, implements, interface, let, package, private, protected, public, static, yield, any, boolean, number, string, symbol, type, from, of},
+    sensitive=true,
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    morestring=[b]',
+    morestring=[b]"
+}
+
+\lstdefinelanguage{Prisma}{
+    keywords={generator, datasource, model, enum, type, provider, url, env, relation, map, db, String, Int, Boolean, DateTime, Float, Decimal, Json, Bytes},
+    sensitive=true,
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    morestring=[b]"
+}
+
+
+\title{\textbf{FlexInvoice Project Flow}}
+\author{Backend Development Log}
+\date{\today}
+
+\begin{document}
+    \maketitle
+    \tableofcontents
+    \newpage
+
+% --------------------------------------------------
+    \section{Project Overview}
+
+    FlexInvoice is a backend system for invoice, sales, and inventory management.
+    The backend is implemented using a RESTful architecture with a strong focus on:
+
+    \begin{itemize}
+        \item Security-by-design
+        \item Clean, maintainable structure
+        \item Incremental development
+        \item Database-first correctness
+    \end{itemize}
+
+    The project is intentionally built in clearly defined steps to ensure correctness
+    before feature complexity.
+
+% --------------------------------------------------
+    \section{Step 00 -- Foundations}
+
+    \subsection{Objective}
+
+    The goal of this step was to establish a minimal but production-grade backend
+    foundation before implementing any business logic.
+
+    Specifically:
+    \begin{itemize}
+        \item Ensure the server boots reliably
+        \item Validate environment configuration at runtime
+        \item Establish secure middleware defaults
+        \item Avoid premature abstractions or clutter
+    \end{itemize}
+
+    \subsection{Technology Stack}
+
+    \begin{itemize}
+        \item Node.js (LTS)
+        \item TypeScript
+        \item Express.js (REST API)
+        \item Zod (runtime validation)
+        \item Pino (structured logging)
+    \end{itemize}
+
+    \subsection{Key Design Decisions}
+
+    \begin{itemize}
+        \item Express was chosen over opinionated frameworks to retain control.
+        \item Environment variables are validated at startup; the app will not run with invalid config.
+        \item No controllers/services/repositories folders were created prematurely.
+    \end{itemize}
+
+    \subsection{Implementation Summary}
+
+    \begin{itemize}
+        \item \texttt{src/app.ts} initializes middleware in a strict order:
+        logging $\rightarrow$ security headers $\rightarrow$ CORS $\rightarrow$ parsing $\rightarrow$ routes.
+        \item \texttt{src/server.ts} is responsible only for starting the HTTP server.
+        \item A health endpoint (\texttt{/health}) was added for diagnostics and deployment readiness.
+    \end{itemize}
+
+    \subsection{Security Measures Applied}
+
+    \begin{itemize}
+        \item HTTP security headers via Helmet
+        \item Request body size limits
+        \item Sensitive fields redacted from logs
+        \item Centralized error handler preventing stack trace leaks
+    \end{itemize}
+
+% --------------------------------------------------
+    \section{Step 01 -- Prisma Schema and MySQL Integration}
+
+    \subsection{Objective}
+
+    The objective of this step was to integrate a relational database layer
+    in a way that is:
+    \begin{itemize}
+        \item Type-safe
+        \item Migration-driven
+        \item Easy to reason about
+        \item Replaceable later (MySQL $\rightarrow$ MongoDB)
+    \end{itemize}
+
+    \subsection{Database Choice}
+
+    MySQL was selected for the initial phase due to:
+    \begin{itemize}
+        \item Strong relational guarantees
+        \item Developer familiarity
+        \item Mature tooling
+    \end{itemize}
+
+    A future migration to MongoDB is planned once the domain stabilizes.
+
+    \subsection{Prisma Configuration}
+
+    Prisma was configured using \texttt{prisma.config.ts}, which explicitly loads
+    environment variables using \texttt{dotenv}. This avoids implicit CLI behavior
+    and ensures deterministic configuration.
+
+    \begin{lstlisting}[language=TypeScript]
+import 'dotenv/config';
+import { defineConfig, env } from 'prisma/config';
+
+export default defineConfig({
+  schema: 'prisma/schema.prisma',
+  datasource: {
+    url: env('DATABASE_URL'),
+  },
+});
+    \end{lstlisting}
+
+    \subsection{Schema Design}
+
+    The initial schema introduced a \texttt{User} model and a \texttt{Role} enum:
+
+    \begin{lstlisting}[language=Prisma]
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  USER
+  SELLER
+  ADMIN
+}
+    \end{lstlisting}
+
+    \subsection{Migration Strategy}
+
+    \begin{itemize}
+        \item Prisma migrations are committed to version control.
+        \item Generated Prisma Client code is ignored.
+        \item Database changes are never applied manually.
+    \end{itemize}
+
+    The initial migration was successfully applied using:
+    \begin{lstlisting}
+npx prisma migrate dev --name init
+    \end{lstlisting}
+
+    \subsection{Verification}
+
+    A temporary debug endpoint was added to verify end-to-end connectivity:
+
+    \begin{itemize}
+        \item Express routing
+        \item Prisma Client generation
+        \item MySQL connectivity
+    \end{itemize}
+
+    The endpoint returned an empty user list, confirming correct setup.
+
+    \subsection{Lessons Learned}
+
+    \begin{itemize}
+        \item Prisma CLI and application runtime load environment variables independently.
+        \item Passwords containing special characters must be URL-encoded in database URLs.
+        \item Node.js bleeding-edge versions may cause compatibility issues with ORM tooling.
+    \end{itemize}
+
+% --------------------------------------------------
+    \section{Current State Summary}
+
+    At the end of this phase:
+    \begin{itemize}
+        \item The backend boots reliably
+        \item Environment configuration is validated
+        \item Prisma is fully operational with MySQL
+        \item Migrations are tracked and reproducible
+        \item No business logic has been implemented yet
+    \end{itemize}
+
+    The project is now ready to implement authentication and authorization.
+
+\end{document}

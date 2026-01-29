@@ -6,6 +6,7 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import {env} from "./config/env";
 import {prisma} from "./prisma/client";
+import {authRouter} from "./modules/auth/auth.routes";
 
 
 export function createApp() {
@@ -55,6 +56,8 @@ export function createApp() {
         const users = await prisma.user.findMany();
         res.json({ users });
     });
+
+    app.use("/auth", authRouter);
 
     return app;
 }
