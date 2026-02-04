@@ -39,6 +39,12 @@ export function createApp() {
 
     }));
 
+    app.use((err:unknown, _req:express.Request, res:express.Response, _next: express.NextFunction)=>{
+        _req.log?.error({ err }, 'Unhandled error');
+
+        res.status(500).json({ error: 'Internal Server Error' });
+    });
+
     app.use(express.json({limit : '200kb'}));
     app.use(express.urlencoded({extended: true, limit: '200kb'}));
 
@@ -46,11 +52,7 @@ export function createApp() {
         res.json({ok: true, env: env.NODE_ENV, name: env.APP_NAME, time: new Date().toISOString()});
     });
 
-    app.use((err:unknown, _req:express.Request, res:express.Response, _next: express.NextFunction)=>{
-        _req.log?.error({ err }, 'Unhandled error');
 
-        res.status(500).json({ error: 'Internal Server Error' });
-    });
 
     app.get('/debug/users', async (_req, res)=>{
         const users = await prisma.user.findMany();
