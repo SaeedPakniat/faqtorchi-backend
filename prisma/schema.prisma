@@ -96,6 +96,8 @@ model Warehouse {
   location  String?
 
   inventories Inventory[]
+  invoices Invoice[]
+
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -261,6 +263,11 @@ model Invoice {
 
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  warehouseId Int?
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  @@index([warehouseId])
 
   @@index([sellerId])
   @@index([customerId])
