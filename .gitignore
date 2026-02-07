@@ -9,7 +9,7 @@ generated/
 
 
 #Documentation Excluded for now till the final version
-/.idea/compiler.xml
+/.idea/*
 /out/missfont.log
 /out/Software_Project.aux
 /out/Software_Project.log
@@ -25,3 +25,5 @@ generated/
 /out/Software_Project_Persian.synctex.gz
 /Documentations/Software_Project_Persian.tex
 /out/Software_Project_Persian.toc
+/dist/
+/out/

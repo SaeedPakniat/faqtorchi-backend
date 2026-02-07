@@ -8,7 +8,7 @@ export async function registerUser(input: RegisterInput){
     const user = await prisma.user.create({
         data: {
             email: input.email ?? null,
-            phone: input.phone ?? null,
+            phone: input.phone,
             name: input.name ?? null,
             passwordHash,
         },
