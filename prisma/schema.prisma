@@ -67,6 +67,7 @@ model SellerProfile {
 
   warehouses Warehouse[]
   products   Product[]
+  invoices Invoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -78,6 +79,10 @@ model CustomerProfile {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   notes     String?
+
+  invoices Invoice[]
+
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -128,6 +133,7 @@ model ProductVariant {
   updatedAt DateTime @updatedAt
 
   inventories Inventory[]
+  invoiceItems InvoiceItem[]
 
   @@unique([productId, sku])
 }
@@ -170,4 +176,114 @@ model InventoryLedger {
   createdAt   DateTime  @default(now())
 
   @@index([inventoryId])
+}
+
+
+enum Currency {
+  IRR
+  IRT
+  USD
+  EUR
+}
+
+enum InvoiceType {
+  INSTANT
+  WAREHOUSE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  CANCELED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+}
+
+enum PaymentStatus {
+  RECORDED
+  VOIDED
+}
+
+model Payment {
+  id        Int      @id @default(autoincrement())
+
+  invoiceId Int
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  amount    Int      // minor units, in invoice currency
+  method    PaymentMethod
+  status    PaymentStatus @default(RECORDED)
+
+  note      String?
+  paidAt    DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([invoiceId])
+  @@index([paidAt])
+}
+
+
+model Invoice {
+  id         Int      @id @default(autoincrement())
+  sellerId   Int
+  seller     SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  type       InvoiceType
+  status     InvoiceStatus @default(ISSUED)
+
+  // Optional linkage to a registered customer
+  customerId Int?
+  customer   CustomerProfile? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  // Snapshot (supports non-member invoices + preserves history)
+  customerName  String?
+  customerPhone String?
+
+  currency   Currency
+  // money in minor units
+  subtotal   Int
+  discount   Int      @default(0)
+  tax        Int      @default(0)
+  total      Int
+
+  issuedAt   DateTime @default(now())
+
+  items      InvoiceItem[]
+  payments   Payment[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([sellerId])
+  @@index([customerId])
+  @@index([issuedAt])
+}
+
+model InvoiceItem {
+  id        Int      @id @default(autoincrement())
+  invoiceId Int
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  // For warehouse invoices you will set variantId, for instant invoices it can be null
+  variantId Int?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  description String?
+  quantity    Int
+  unitPrice   Int  // minor units
+  lineTotal   Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([invoiceId])
+  @@index([variantId])
 }
