@@ -142,9 +142,32 @@ model Inventory {
 
   quantity    Int
 
+  ledger InventoryLedger[]
+
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@unique([warehouseId, variantId])
 }
 
+enum InventoryChangeType {
+  MANUAL
+  INVOICE
+  ADJUSTMENT
+}
+
+model InventoryLedger {
+  id          Int      @id @default(autoincrement())
+
+  inventoryId Int
+  inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+
+  changeType  InventoryChangeType
+  delta       Int       // + or -
+  note        String?
+
+  createdAt   DateTime  @default(now())
+
+  @@index([inventoryId])
+}
