@@ -46,10 +46,15 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
 
         res.cookie(REFRESH_COOKIE, result.refreshToken, cookieOptions);
         res.json({ accessToken: result.accessToken });
-    } catch (e) {
+    } catch (e: any) {
+        // jwt malformed / expired -> 401
+        if (e?.name === "JsonWebTokenError" || e?.name === "TokenExpiredError") {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
         next(e);
     }
 }
+
 
 export async function logout(req: Request, res: Response, next: NextFunction) {
     try {

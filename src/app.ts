@@ -47,12 +47,12 @@ export function createApp() {
         res.status(500).json({ error: 'Internal Server Error' });
     });
 
-    app.use(cookieParser());
 
-    app.use("/api/v1", v1Router);
 
     app.use(express.json({limit : '200kb'}));
     app.use(express.urlencoded({extended: true, limit: '200kb'}));
+
+    app.use(cookieParser());
 
     app.get('/health', (_req, res)=>{
         res.json({ok: true, env: env.NODE_ENV, name: env.APP_NAME, time: new Date().toISOString()});
@@ -66,6 +66,8 @@ export function createApp() {
     });
 
     app.use("/auth", authRouter);
+
+    app.use("/api/v1", v1Router);
 
     return app;
 }
