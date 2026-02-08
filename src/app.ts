@@ -7,6 +7,8 @@ import pinoHttp from "pino-http";
 import {env} from "./config/env";
 import {prisma} from "./prisma/client";
 import {authRouter} from "./modules/auth/auth.routes";
+import cookieParser from "cookie-parser";
+import v1Router from "./routes/v1";
 
 
 export function createApp() {
@@ -44,6 +46,10 @@ export function createApp() {
 
         res.status(500).json({ error: 'Internal Server Error' });
     });
+
+    app.use(cookieParser());
+
+    app.use("/api/v1", v1Router);
 
     app.use(express.json({limit : '200kb'}));
     app.use(express.urlencoded({extended: true, limit: '200kb'}));

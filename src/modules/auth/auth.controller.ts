@@ -1,16 +1,64 @@
-import {Request, Response, NextFunction} from 'express';
-import { RegisterSchema} from "./auth.schemas";
-import { registerUser} from "./auth.service";
+import { Request, Response, NextFunction } from "express";
+import { loginUser, logoutSession, refreshSession, registerUser } from "./auth.service";
 
-export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
+const REFRESH_COOKIE = "refresh_token";
 
-    try{
-        const input = RegisterSchema.parse(req.body);
-        const user = await registerUser(input);
+const cookieOptions = {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/api/v1/auth/refresh",
+};
+
+export async function register(req: Request, res: Response, next: NextFunction) {
+    try {
+        const user = await registerUser(req.body);
         res.status(201).json({ user });
+    } catch (e) {
+        next(e);
     }
-    catch (err) {
-        next(err);
-    }
+}
 
+export async function login(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { phone, password } = req.body;
+
+        const result = await loginUser({
+            phone,
+            password,
+            userAgent: req.headers["user-agent"] ?? undefined,
+            ipAddress: req.ip,
+        });
+
+        res.cookie(REFRESH_COOKIE, result.refreshToken, cookieOptions);
+        res.json({ user: result.user, accessToken: result.accessToken });
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function refresh(req: Request, res: Response, next: NextFunction) {
+    try {
+        const token = req.cookies?.[REFRESH_COOKIE];
+        if (!token) return res.status(401).json({ message: "Unauthorized" });
+
+        const result = await refreshSession(token);
+
+        res.cookie(REFRESH_COOKIE, result.refreshToken, cookieOptions);
+        res.json({ accessToken: result.accessToken });
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function logout(req: Request, res: Response, next: NextFunction) {
+    try {
+        const token = req.cookies?.[REFRESH_COOKIE];
+        if (token) await logoutSession(token);
+
+        res.clearCookie(REFRESH_COOKIE, cookieOptions);
+        res.json({ ok: true });
+    } catch (e) {
+        next(e);
+    }
 }
