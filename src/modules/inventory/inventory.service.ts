@@ -80,3 +80,36 @@ export async function adjustInventory(params: {
         return { inventory: inv, ledger };
     });
 }
+
+export async function listInventory(params: { sellerId: number; warehouseId: number }) {
+    const warehouse = await prisma.warehouse.findFirst({
+        where: { id: params.warehouseId, sellerId: params.sellerId },
+        select: { id: true },
+    });
+    if (!warehouse) {
+        throw Object.assign(new Error("Warehouse not found"), { status: 404 });
+    }
+
+    const inventory = await prisma.inventory.findMany({
+        where: { warehouseId: params.warehouseId },
+        orderBy: { id: "desc" },
+        select: {
+            id: true,
+            warehouseId: true,
+            variantId: true,
+            quantity: true,
+            updatedAt: true,
+            variant: {
+                select: {
+                    id: true,
+                    sku: true,
+                    price: true,
+                    attributes: true,
+                    product: { select: { id: true, name: true } },
+                },
+            },
+        },
+    });
+
+    return { inventory };
+}

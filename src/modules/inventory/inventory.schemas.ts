@@ -8,3 +8,12 @@ export const adjustInventorySchema = z.object({
 });
 
 export type AdjustInventoryInput = z.infer<typeof adjustInventorySchema>;
+
+export const listInventorySchema = z.object({
+    warehouseId: z.preprocess(
+        (v) => (typeof v === "string" ? Number(v) : v),
+        z.number().int().positive()
+    ),
+});
+
+export type ListInventoryInput = z.infer<typeof listInventorySchema>;

@@ -71,8 +71,8 @@ export function createApp() {
             return res.status(401).json({ message: "Unauthorized" });
         }
 
-        const status = err?.status ?? 500;
-        return res.status(status).json({ message: err?.message ?? "Internal Server Error" });
+        const status = err?.status || 500;
+        return res.status(status).json({ message: err?.message });
     });
 
     return app;

@@ -3,6 +3,7 @@ import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
 import { createProductSchema, createVariantSchema } from "./product.schemas";
 import { createProduct, createVariant, listProducts } from "./product.service";
+import { serializeBigInt } from "../../utils/bigint";
 
 export async function create(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
@@ -25,7 +26,7 @@ export async function list(req: AuthedRequest, res: Response, next: NextFunction
     try {
         const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
         const products = await listProducts(sellerId);
-        res.json({ products });
+        res.json(serializeBigInt({ products }));
     } catch (e) {
         next(e);
     }
@@ -49,7 +50,7 @@ export async function addVariant(req: AuthedRequest, res: Response, next: NextFu
             attributes: input.attributes,
         });
 
-        res.status(201).json({ variant });
+        res.status(201).json(serializeBigInt({ variant }));
     } catch (e) {
         next(e);
     }

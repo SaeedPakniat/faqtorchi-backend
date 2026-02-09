@@ -1,4 +1,6 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../prisma/client";
+import { toBigInt } from "../../utils/bigint";
 
 export async function createProduct(params: {
     sellerId: number;
@@ -40,7 +42,7 @@ export async function createVariant(params: {
     sellerId: number;
     productId: number;
     sku: string;
-    price: number;
+    price: number | string;
     attributes?: Record<string, any>;
 }) {
     // ensure product belongs to seller
@@ -52,20 +54,27 @@ export async function createVariant(params: {
         throw Object.assign(new Error("Product not found"), { status: 404 });
     }
 
-    return prisma.productVariant.create({
-        data: {
-            productId: params.productId,
-            sku: params.sku,
-            price: params.price,
-            attributes: params.attributes ?? undefined, // Prisma accepts undefined for optional Json
-        },
-        select: {
-            id: true,
-            productId: true,
-            sku: true,
-            price: true,
-            attributes: true,
-            createdAt: true,
-        },
-    });
+    try {
+        return prisma.productVariant.create({
+            data: {
+                productId: params.productId,
+                sku: params.sku,
+                price: toBigInt(params.price),
+                attributes: params.attributes ?? undefined, // Prisma accepts undefined for optional Json
+            },
+            select: {
+                id: true,
+                productId: true,
+                sku: true,
+                price: true,
+                attributes: true,
+                createdAt: true,
+            },
+        });
+    } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+            throw Object.assign(new Error("SKU already exists for this product"), { status: 409 });
+        }
+        throw e;
+    }
 }
