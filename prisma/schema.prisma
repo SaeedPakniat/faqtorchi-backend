@@ -67,9 +67,28 @@ model SellerProfile {
   warehouses Warehouse[]
   products   Product[]
   invoices   Invoice[]
+  customers  SellerCustomer[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model SellerCustomer {
+  id       Int           @id @default(autoincrement())
+  sellerId Int
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  name  String?
+  phone String
+  notes String?
+
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId])
+  @@unique([sellerId, phone])
 }
 
 model CustomerProfile {
@@ -78,8 +97,6 @@ model CustomerProfile {
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   notes String?
-
-  invoices Invoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -236,7 +253,7 @@ model Invoice {
 
   // Optional linkage to a registered customer
   customerId Int?
-  customer   CustomerProfile? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customer   SellerCustomer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   // Snapshot (supports non-member invoices + preserves history)
   customerName  String?

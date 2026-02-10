@@ -7,6 +7,12 @@ export const warehouseInvoiceItemSchema = z.object({
     description: z.string().max(500).optional(),
 });
 
+export const instantInvoiceItemSchema = z.object({
+    description: z.string().min(1).max(500),
+    quantity: z.number().int().positive(),
+    unitPrice: moneySchema,
+});
+
 export const createWarehouseInvoiceSchema = z.object({
     warehouseId: z.number().int().positive(),
 
@@ -26,6 +32,24 @@ export const createWarehouseInvoiceSchema = z.object({
 });
 
 export type CreateWarehouseInvoiceInput = z.infer<typeof createWarehouseInvoiceSchema>;
+
+export const createInstantInvoiceSchema = z.object({
+    currency: z.enum(["IRR", "IRT", "USD", "EUR"]),
+
+    // optional linkage to registered customer
+    customerId: z.number().int().positive().optional(),
+
+    // snapshot for walk-in customers
+    customerName: z.string().max(120).optional(),
+    customerPhone: z.string().max(40).optional(),
+
+    discount: moneySchema.default(0n),
+    tax: moneySchema.default(0n),
+
+    items: z.array(instantInvoiceItemSchema).min(1),
+});
+
+export type CreateInstantInvoiceInput = z.infer<typeof createInstantInvoiceSchema>;
 
 export const invoiceIdParamSchema = z.object({
     id: z.preprocess(

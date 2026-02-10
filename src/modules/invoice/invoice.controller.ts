@@ -3,11 +3,12 @@ import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
 import {
     cancelInvoiceParamSchema,
+    createInstantInvoiceSchema,
     createWarehouseInvoiceSchema,
     invoiceIdParamSchema,
     listInvoicesSchema,
 } from "./invoice.schemas";
-import { cancelInvoice, createWarehouseInvoice, getInvoiceById, listInvoices } from "./invoice.service";
+import { cancelInvoice, createInstantInvoice, createWarehouseInvoice, getInvoiceById, listInvoices } from "./invoice.service";
 
 export async function createWarehouse(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
@@ -17,6 +18,29 @@ export async function createWarehouse(req: AuthedRequest, res: Response, next: N
         const result = await createWarehouseInvoice({
             sellerId,
             warehouseId: input.warehouseId,
+            createdByUserId: req.user!.id,
+            currency: input.currency,
+            customerId: input.customerId,
+            customerName: input.customerName,
+            customerPhone: input.customerPhone,
+            discount: input.discount,
+            tax: input.tax,
+            items: input.items,
+        });
+
+        res.status(201).json(result);
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function createInstant(req: AuthedRequest, res: Response, next: NextFunction) {
+    try {
+        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const input = createInstantInvoiceSchema.parse(req.body);
+
+        const result = await createInstantInvoice({
+            sellerId,
             createdByUserId: req.user!.id,
             currency: input.currency,
             customerId: input.customerId,

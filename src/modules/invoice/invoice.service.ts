@@ -1,6 +1,15 @@
 import { prisma } from "../../prisma/client";
-import type { CreateWarehouseInvoiceInput, ListInvoicesInput } from "./invoice.schemas";
+import type { Prisma } from "@prisma/client";
+import type { CreateInstantInvoiceInput, CreateWarehouseInvoiceInput, ListInvoicesInput } from "./invoice.schemas";
 import { toBigInt } from "../../utils/bigint";
+
+async function assertCustomerOwnership(tx: Prisma.TransactionClient, sellerId: number, customerId: number) {
+    const customer = await tx.sellerCustomer.findFirst({
+        where: { id: customerId, sellerId },
+        select: { id: true },
+    });
+    if (!customer) throw Object.assign(new Error("Customer not found"), { status: 404 });
+}
 
 export async function createWarehouseInvoice(params: {
     sellerId: number;
@@ -8,6 +17,10 @@ export async function createWarehouseInvoice(params: {
     createdByUserId: number;
 } & CreateWarehouseInvoiceInput) {
     return prisma.$transaction(async (tx) => {
+        if (params.customerId) {
+            await assertCustomerOwnership(tx, params.sellerId, params.customerId);
+        }
+
         // 1) warehouse must belong to seller
         const warehouse = await tx.warehouse.findFirst({
             where: { id: params.warehouseId, sellerId: params.sellerId },
@@ -125,6 +138,79 @@ export async function createWarehouseInvoice(params: {
                 select: { id: true },
             });
         }
+
+        return { invoice };
+    });
+}
+
+export async function createInstantInvoice(params: {
+    sellerId: number;
+    createdByUserId: number;
+} & CreateInstantInvoiceInput) {
+    return prisma.$transaction(async (tx) => {
+        if (params.customerId) {
+            await assertCustomerOwnership(tx, params.sellerId, params.customerId);
+        }
+
+        const itemsPrepared = params.items.map((i) => {
+            const unitPrice = toBigInt(i.unitPrice);
+            const lineTotal = unitPrice * BigInt(i.quantity);
+            return {
+                variantId: null,
+                quantity: i.quantity,
+                unitPrice,
+                lineTotal,
+                description: i.description,
+            };
+        });
+
+        const subtotal = itemsPrepared.reduce((sum, it) => sum + it.lineTotal, 0n);
+        const discount = toBigInt(params.discount);
+        const tax = toBigInt(params.tax);
+
+        if (discount > subtotal) {
+            throw Object.assign(new Error("Discount cannot exceed subtotal"), { status: 400 });
+        }
+
+        const total = subtotal - discount + tax;
+        if (total < 0n) {
+            throw Object.assign(new Error("Total cannot be negative"), { status: 400 });
+        }
+
+        const invoice = await tx.invoice.create({
+            data: {
+                sellerId: params.sellerId,
+                createdByUserId: params.createdByUserId,
+                type: "INSTANT",
+                status: "ISSUED",
+
+                customerId: params.customerId ?? null,
+                customerName: params.customerName ?? null,
+                customerPhone: params.customerPhone ?? null,
+
+                currency: params.currency,
+                subtotal,
+                discount,
+                tax,
+                total,
+
+                items: { create: itemsPrepared },
+            },
+            select: {
+                id: true,
+                type: true,
+                status: true,
+                currency: true,
+                subtotal: true,
+                discount: true,
+                tax: true,
+                total: true,
+                issuedAt: true,
+                items: {
+                    select: { id: true, variantId: true, quantity: true, unitPrice: true, lineTotal: true, description: true },
+                },
+            },
+        });
 
         return { invoice };
     });
