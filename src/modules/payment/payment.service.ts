@@ -42,7 +42,6 @@ export async function createPaymentForInvoice(params: {
                 amount,
                 method: params.method,
                 note: params.note ?? null,
-                paidAt: params.paidAt ? new Date(params.paidAt) : undefined,
             },
         });
 

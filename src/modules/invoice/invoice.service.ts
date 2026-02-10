@@ -193,3 +193,69 @@ export async function listInvoices(params: { sellerId: number } & ListInvoicesIn
         invoices,
     };
 }
+
+export async function cancelInvoice(params: { sellerId: number; invoiceId: number }) {
+    return prisma.$transaction(async (tx) => {
+        const invoice = await tx.invoice.findUnique({
+            where: { id: params.invoiceId },
+            include: { items: true },
+        });
+
+        if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
+        if (invoice.sellerId !== params.sellerId) {
+            throw Object.assign(new Error("Forbidden"), { status: 403 });
+        }
+        if (invoice.status === "CANCELED") return { invoice };
+
+        const recordedPayments = await tx.payment.count({
+            where: { invoiceId: invoice.id, status: "RECORDED" },
+        });
+        if (recordedPayments > 0) {
+            throw Object.assign(new Error("Cannot cancel invoice with recorded payments"), { status: 400 });
+        }
+
+        if (invoice.type === "WAREHOUSE") {
+            if (!invoice.warehouseId) throw Object.assign(new Error("Warehouse not found"), { status: 404 });
+
+            for (const item of invoice.items) {
+                if (!item.variantId) continue;
+
+                const inv = await tx.inventory.findUnique({
+                    where: {
+                        warehouseId_variantId: {
+                            warehouseId: invoice.warehouseId,
+                            variantId: item.variantId,
+                        },
+                    },
+                    select: { id: true, quantity: true },
+                });
+
+                if (!inv) throw Object.assign(new Error("Inventory not found"), { status: 404 });
+
+                await tx.inventory.update({
+                    where: { id: inv.id },
+                    data: { quantity: inv.quantity + item.quantity },
+                    select: { id: true },
+                });
+
+                await tx.inventoryLedger.create({
+                    data: {
+                        inventoryId: inv.id,
+                        changeType: "INVOICE",
+                        delta: item.quantity,
+                        note: `cancel:invoice:${invoice.id}`,
+                    },
+                    select: { id: true },
+                });
+            }
+        }
+
+        const updated = await tx.invoice.update({
+            where: { id: invoice.id },
+            data: { status: "CANCELED" },
+            include: { items: true },
+        });
+
+        return { invoice: updated };
+    });
+}

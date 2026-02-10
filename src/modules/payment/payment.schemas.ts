@@ -19,8 +19,6 @@ export const createPaymentSchema = z.object({
     amount: moneySchema,          // <-- bigint output
     method: z.enum(["CASH","CARD","TRANSFER"]),
     note: z.string().optional(),
-    paidAt: z.string().datetime().optional(),
-
 });
 
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;

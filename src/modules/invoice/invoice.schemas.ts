@@ -34,6 +34,13 @@ export const invoiceIdParamSchema = z.object({
     ),
 });
 
+export const cancelInvoiceParamSchema = z.object({
+    invoiceId: z.preprocess(
+        (v) => (typeof v === "string" ? Number(v) : v),
+        z.number().int().positive()
+    ),
+});
+
 export const listInvoicesSchema = z.object({
     status: z
         .enum(["DRAFT", "ISSUED", "PARTIALLY_PAID", "PAID", "CANCELED"])

@@ -54,3 +54,34 @@ curl -s -X POST "http://localhost:3000/api/v1/invoices/$INVOICE_ID/payments" \
   -H "Content-Type: application/json" \
   -d '{"amount":"9000","method":"CASH"}' | cat
 ```
+
+## Cancel invoice (no recorded payments)
+
+```bash
+curl -i -X POST "http://localhost:3000/api/v1/invoices/$INVOICE_ID/cancel" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Cancel invoice fails with recorded payments
+
+```bash
+# ensure there is at least one RECORDED payment, then:
+curl -i -X POST "http://localhost:3000/api/v1/invoices/$INVOICE_ID/cancel" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Warehouse cancel restock + ledger note
+
+```bash
+# 1) cancel a warehouse invoice
+curl -i -X POST "http://localhost:3000/api/v1/invoices/$INVOICE_ID/cancel" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 2) inventory should increase for the warehouse
+curl -s "http://localhost:3000/api/v1/inventory?warehouseId=$WAREHOUSE_ID" \
+  -H "Authorization: Bearer $TOKEN" | cat
+
+# 3) ledger should include cancel:invoice:<id>
+curl -s "http://localhost:3000/api/v1/inventory/ledger?inventoryId=$INVENTORY_ID" \
+  -H "Authorization: Bearer $TOKEN" | cat
+```

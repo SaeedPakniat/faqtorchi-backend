@@ -1,8 +1,13 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
-import { createWarehouseInvoiceSchema, invoiceIdParamSchema, listInvoicesSchema } from "./invoice.schemas";
-import { createWarehouseInvoice, getInvoiceById, listInvoices } from "./invoice.service";
+import {
+    cancelInvoiceParamSchema,
+    createWarehouseInvoiceSchema,
+    invoiceIdParamSchema,
+    listInvoicesSchema,
+} from "./invoice.schemas";
+import { cancelInvoice, createWarehouseInvoice, getInvoiceById, listInvoices } from "./invoice.service";
 
 export async function createWarehouse(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
@@ -52,6 +57,22 @@ export async function list(req: AuthedRequest, res: Response, next: NextFunction
         const result = await listInvoices({
             sellerId,
             ...query,
+        });
+
+        res.json(result);
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function cancel(req: AuthedRequest, res: Response, next: NextFunction) {
+    try {
+        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const params = cancelInvoiceParamSchema.parse(req.params);
+
+        const result = await cancelInvoice({
+            sellerId,
+            invoiceId: params.invoiceId,
         });
 
         res.json(result);
