@@ -2,6 +2,83 @@ import { prisma } from "../../prisma/client";
 import type { Prisma } from "@prisma/client";
 import type { CreateInstantInvoiceInput, CreateWarehouseInvoiceInput, ListInvoicesInput } from "./invoice.schemas";
 import { toBigInt } from "../../utils/bigint";
+import { getExchangeRateSnapshot } from "../exchangeRate/exchangeRate.service";
+import fs from "fs";
+import path from "path";
+import PDFDocument from "pdfkit";
+import crypto from "crypto";
+
+const STORAGE_ROOT = path.join(process.cwd(), "storage");
+
+function getInvoicePdfPaths(sellerId: number, invoiceId: number) {
+    const relativeKey = path.join("invoices", String(sellerId), `${invoiceId}.pdf`);
+    const fullPath = path.join(STORAGE_ROOT, relativeKey);
+    const normalizedRoot = path.normalize(STORAGE_ROOT + path.sep);
+    const normalizedPath = path.normalize(fullPath);
+    if (!normalizedPath.startsWith(normalizedRoot)) {
+        throw Object.assign(new Error("Invalid PDF path"), { status: 400 });
+    }
+    return { relativeKey, fullPath };
+}
+
+async function renderInvoicePdf(invoice: {
+    id: number;
+    currency: string;
+    subtotal: bigint;
+    discount: bigint;
+    tax: bigint;
+    total: bigint;
+    issuedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    seller: { storeName: string };
+    items: Array<{
+        description: string | null;
+        quantity: number;
+        unitPrice: bigint;
+        lineTotal: bigint;
+    }>;
+}, fullPath: string) {
+    await fs.promises.mkdir(path.dirname(fullPath), { recursive: true });
+    const doc = new PDFDocument({ margin: 40, size: "A4" });
+    const stream = fs.createWriteStream(fullPath);
+    doc.pipe(stream);
+
+    doc.fontSize(18).text(invoice.seller.storeName);
+    doc.moveDown(0.5);
+    doc.fontSize(12).text(`Invoice #${invoice.id}`);
+    doc.text(`Issued: ${invoice.issuedAt.toISOString()}`);
+    doc.text(`Currency: ${invoice.currency}`);
+
+    if (invoice.customerName || invoice.customerPhone) {
+        doc.moveDown(0.5);
+        doc.text(`Customer: ${invoice.customerName ?? "-"}`);
+        if (invoice.customerPhone) doc.text(`Phone: ${invoice.customerPhone}`);
+    }
+
+    doc.moveDown(1);
+    doc.fontSize(12).text("Items:");
+    doc.moveDown(0.5);
+
+    invoice.items.forEach((item, idx) => {
+        doc.text(
+            `${idx + 1}. ${item.description ?? "Item"} | Qty: ${item.quantity} | Unit: ${item.unitPrice.toString()} | Line: ${item.lineTotal.toString()}`
+        );
+    });
+
+    doc.moveDown(1);
+    doc.text(`Subtotal: ${invoice.subtotal.toString()}`);
+    doc.text(`Discount: ${invoice.discount.toString()}`);
+    doc.text(`Tax: ${invoice.tax.toString()}`);
+    doc.text(`Total: ${invoice.total.toString()}`);
+
+    doc.end();
+
+    await new Promise<void>((resolve, reject) => {
+        stream.on("finish", () => resolve());
+        stream.on("error", reject);
+    });
+}
 
 async function assertCustomerOwnership(tx: Prisma.TransactionClient, sellerId: number, customerId: number) {
     const customer = await tx.sellerCustomer.findFirst({
@@ -16,6 +93,10 @@ export async function createWarehouseInvoice(params: {
     warehouseId: number;
     createdByUserId: number;
 } & CreateWarehouseInvoiceInput) {
+    const exchangeRate =
+        params.currency !== "IRR"
+            ? await getExchangeRateSnapshot({ base: params.currency, quote: "IRR" })
+            : null;
     return prisma.$transaction(async (tx) => {
         if (params.customerId) {
             await assertCustomerOwnership(tx, params.sellerId, params.customerId);
@@ -87,6 +168,10 @@ export async function createWarehouseInvoice(params: {
                 discount,
                 tax,
                 total,
+                exchangeRateBase: exchangeRate?.base ?? null,
+                exchangeRateQuote: exchangeRate?.quote ?? null,
+                exchangeRateValue: exchangeRate?.rate ?? null,
+                exchangeRateFetchedAt: exchangeRate?.fetchedAt ?? null,
 
                 items: { create: itemsPrepared },
             },
@@ -147,6 +232,10 @@ export async function createInstantInvoice(params: {
     sellerId: number;
     createdByUserId: number;
 } & CreateInstantInvoiceInput) {
+    const exchangeRate =
+        params.currency !== "IRR"
+            ? await getExchangeRateSnapshot({ base: params.currency, quote: "IRR" })
+            : null;
     return prisma.$transaction(async (tx) => {
         if (params.customerId) {
             await assertCustomerOwnership(tx, params.sellerId, params.customerId);
@@ -193,6 +282,10 @@ export async function createInstantInvoice(params: {
                 discount,
                 tax,
                 total,
+                exchangeRateBase: exchangeRate?.base ?? null,
+                exchangeRateQuote: exchangeRate?.quote ?? null,
+                exchangeRateValue: exchangeRate?.rate ?? null,
+                exchangeRateFetchedAt: exchangeRate?.fetchedAt ?? null,
 
                 items: { create: itemsPrepared },
             },
@@ -278,6 +371,102 @@ export async function listInvoices(params: { sellerId: number } & ListInvoicesIn
         total,
         invoices,
     };
+}
+
+export async function generateInvoicePdf(params: { sellerId: number; invoiceId: number }) {
+    const invoice = await prisma.invoice.findFirst({
+        where: { id: params.invoiceId, sellerId: params.sellerId },
+        include: {
+            items: { select: { description: true, quantity: true, unitPrice: true, lineTotal: true } },
+            seller: { select: { storeName: true } },
+        },
+    });
+
+    if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
+
+    const token = invoice.pdfToken ?? crypto.randomBytes(24).toString("base64url");
+    const { relativeKey, fullPath } = getInvoicePdfPaths(params.sellerId, params.invoiceId);
+
+    await renderInvoicePdf(
+        {
+            id: invoice.id,
+            currency: invoice.currency,
+            subtotal: invoice.subtotal,
+            discount: invoice.discount,
+            tax: invoice.tax,
+            total: invoice.total,
+            issuedAt: invoice.issuedAt,
+            customerName: invoice.customerName,
+            customerPhone: invoice.customerPhone,
+            seller: invoice.seller,
+            items: invoice.items,
+        },
+        fullPath
+    );
+
+    await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: {
+            pdfKey: relativeKey,
+            pdfToken: token,
+            pdfGeneratedAt: new Date(),
+        },
+        select: { id: true },
+    });
+
+    return {
+        invoiceId: invoice.id,
+        pdfKey: relativeKey,
+        pdfToken: token,
+        pdfUrlPublic: `/api/v1/public/invoices/${token}/pdf`,
+    };
+}
+
+export async function getInvoicePdfForSeller(params: { sellerId: number; invoiceId: number }) {
+    const invoice = await prisma.invoice.findFirst({
+        where: { id: params.invoiceId, sellerId: params.sellerId },
+        select: { pdfKey: true },
+    });
+
+    if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
+    if (!invoice.pdfKey) throw Object.assign(new Error("PDF not found"), { status: 404 });
+
+    const fullPath = path.join(STORAGE_ROOT, invoice.pdfKey);
+    const normalizedRoot = path.normalize(STORAGE_ROOT + path.sep);
+    const normalizedPath = path.normalize(fullPath);
+    if (!normalizedPath.startsWith(normalizedRoot)) {
+        throw Object.assign(new Error("Invalid PDF path"), { status: 400 });
+    }
+
+    try {
+        await fs.promises.access(fullPath, fs.constants.R_OK);
+    } catch {
+        throw Object.assign(new Error("PDF not found"), { status: 404 });
+    }
+    return { fullPath, fileName: path.basename(fullPath) };
+}
+
+export async function getInvoicePdfByToken(params: { token: string }) {
+    const invoice = await prisma.invoice.findFirst({
+        where: { pdfToken: params.token },
+        select: { pdfKey: true },
+    });
+
+    if (!invoice || !invoice.pdfKey) throw Object.assign(new Error("PDF not found"), { status: 404 });
+
+    const fullPath = path.join(STORAGE_ROOT, invoice.pdfKey);
+    const normalizedRoot = path.normalize(STORAGE_ROOT + path.sep);
+    const normalizedPath = path.normalize(fullPath);
+    if (!normalizedPath.startsWith(normalizedRoot)) {
+        throw Object.assign(new Error("Invalid PDF path"), { status: 400 });
+    }
+
+    try {
+        await fs.promises.access(fullPath, fs.constants.R_OK);
+    } catch {
+        throw Object.assign(new Error("PDF not found"), { status: 404 });
+    }
+    return { fullPath, fileName: path.basename(fullPath) };
 }
 
 export async function cancelInvoice(params: { sellerId: number; invoiceId: number }) {

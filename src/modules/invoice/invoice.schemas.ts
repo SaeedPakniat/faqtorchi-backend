@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { moneySchema } from "../../utils/validation";
+import { moneyBigIntSchema } from "../../utils/validation";
 
 export const warehouseInvoiceItemSchema = z.object({
     variantId: z.number().int().positive(),
@@ -10,7 +10,7 @@ export const warehouseInvoiceItemSchema = z.object({
 export const instantInvoiceItemSchema = z.object({
     description: z.string().min(1).max(500),
     quantity: z.number().int().positive(),
-    unitPrice: moneySchema,
+    unitPrice: moneyBigIntSchema,
 });
 
 export const createWarehouseInvoiceSchema = z.object({
@@ -25,8 +25,8 @@ export const createWarehouseInvoiceSchema = z.object({
     customerName: z.string().max(120).optional(),
     customerPhone: z.string().max(40).optional(),
 
-    discount: moneySchema.default(0n),
-    tax: moneySchema.default(0n),
+    discount: moneyBigIntSchema.default(0n),
+    tax: moneyBigIntSchema.default(0n),
 
     items: z.array(warehouseInvoiceItemSchema).min(1),
 });
@@ -43,8 +43,8 @@ export const createInstantInvoiceSchema = z.object({
     customerName: z.string().max(120).optional(),
     customerPhone: z.string().max(40).optional(),
 
-    discount: moneySchema.default(0n),
-    tax: moneySchema.default(0n),
+    discount: moneyBigIntSchema.default(0n),
+    tax: moneyBigIntSchema.default(0n),
 
     items: z.array(instantInvoiceItemSchema).min(1),
 });
@@ -63,6 +63,17 @@ export const cancelInvoiceParamSchema = z.object({
         (v) => (typeof v === "string" ? Number(v) : v),
         z.number().int().positive()
     ),
+});
+
+export const invoicePdfParamSchema = z.object({
+    invoiceId: z.preprocess(
+        (v) => (typeof v === "string" ? Number(v) : v),
+        z.number().int().positive()
+    ),
+});
+
+export const publicInvoicePdfParamSchema = z.object({
+    token: z.string().min(16),
 });
 
 export const listInvoicesSchema = z.object({

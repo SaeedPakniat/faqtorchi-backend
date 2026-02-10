@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint .",
+    "test": "node scripts/api/smoke.mjs",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "build": "tsc -p tsconfig.json"
@@ -22,6 +23,7 @@
     "@types/multer": "^2.0.0",
     "@types/node": "^24.10.4",
     "@types/nodemailer": "^7.0.3",
+    "@types/pdfkit": "^0.13.9",
     "dotenv-cli": "^10.0.0",
     "eslint": "^9.39.2",
     "nodemon": "^3.1.10",
@@ -51,6 +53,7 @@
     "nodemailer": "^7.0.10",
     "pino": "^10.1.0",
     "pino-http": "^11.0.0",
+    "pdfkit": "^0.17.1",
     "puppeteer": "^24.26.1",
     "zod": "^4.2.1"
   }

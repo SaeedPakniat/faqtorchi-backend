@@ -6,9 +6,20 @@ import {
     createInstantInvoiceSchema,
     createWarehouseInvoiceSchema,
     invoiceIdParamSchema,
+    invoicePdfParamSchema,
     listInvoicesSchema,
+    publicInvoicePdfParamSchema,
 } from "./invoice.schemas";
-import { cancelInvoice, createInstantInvoice, createWarehouseInvoice, getInvoiceById, listInvoices } from "./invoice.service";
+import {
+    cancelInvoice,
+    createInstantInvoice,
+    createWarehouseInvoice,
+    generateInvoicePdf,
+    getInvoiceById,
+    getInvoicePdfByToken,
+    getInvoicePdfForSeller,
+    listInvoices,
+} from "./invoice.service";
 
 export async function createWarehouse(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
@@ -100,6 +111,55 @@ export async function cancel(req: AuthedRequest, res: Response, next: NextFuncti
         });
 
         res.json(result);
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function createPdf(req: AuthedRequest, res: Response, next: NextFunction) {
+    try {
+        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const params = invoicePdfParamSchema.parse(req.params);
+
+        const result = await generateInvoicePdf({
+            sellerId,
+            invoiceId: params.invoiceId,
+        });
+
+        res.json(result);
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function getPdf(req: AuthedRequest, res: Response, next: NextFunction) {
+    try {
+        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const params = invoicePdfParamSchema.parse(req.params);
+
+        const { fullPath, fileName } = await getInvoicePdfForSeller({
+            sellerId,
+            invoiceId: params.invoiceId,
+        });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename=\"${fileName}\"`);
+        res.setHeader("Cache-Control", "no-store");
+        res.sendFile(fullPath);
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function getPublicPdf(req: AuthedRequest, res: Response, next: NextFunction) {
+    try {
+        const params = publicInvoicePdfParamSchema.parse(req.params);
+        const { fullPath, fileName } = await getInvoicePdfByToken({ token: params.token });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename=\"${fileName}\"`);
+        res.setHeader("Cache-Control", "no-store");
+        res.sendFile(fullPath);
     } catch (e) {
         next(e);
     }

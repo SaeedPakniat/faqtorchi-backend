@@ -1,13 +1,25 @@
 import { z } from "zod";
 
-export const moneySchema = z.preprocess((v) => {
-    // allow numbers, numeric strings, bigint
-    if (typeof v === "bigint") return v;
-    if (typeof v === "number") return v;
-    if (typeof v === "string") return v.trim();
-    return v;
-}, z.union([
-    z.bigint(),
-    z.number().int().nonnegative().transform((n) => BigInt(n)),
-    z.string().regex(/^\d+$/).transform((s) => BigInt(s)),
-]));
+const MONEY_MAX = 10n ** 18n;
+
+export const moneyBigIntSchema = z
+    .union([
+        z
+            .number()
+            .int()
+            .nonnegative()
+            .refine((n) => Number.isSafeInteger(n), { message: "Invalid money value" })
+            .transform((n) => BigInt(n)),
+        z
+            .string()
+            .trim()
+            .regex(/^\d+$/)
+            .transform((s) => BigInt(s)),
+    ])
+    .refine((v) => v <= MONEY_MAX, { message: "Money value too large" });
+
+export const moneySchema = moneyBigIntSchema;
+
+export const moneyBigIntPositiveSchema = moneyBigIntSchema.refine((v) => v > 0n, {
+    message: "Amount must be greater than 0",
+});

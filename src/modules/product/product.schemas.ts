@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { moneySchema } from "../../utils/validation";
+import { moneyBigIntSchema } from "../../utils/validation";
 
 export const createProductSchema = z.object({
     name: z.string().min(1),
@@ -11,7 +11,7 @@ export type CreateProductInput = z.infer<typeof createProductSchema>;
 
 export const createVariantSchema = z.object({
     sku: z.string().min(1),
-    price: moneySchema,          // <-- bigint output
+    price: moneyBigIntSchema,          // <-- bigint output
     attributes: z.any().optional(),
 });
 

@@ -2,9 +2,11 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
+import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
+import crypto from "crypto";
 
 import { env } from "./config/env";
 import { prisma } from "./prisma/client";
@@ -25,6 +27,13 @@ export function createApp() {
     // 1) Logging (BEFORE routes so every request gets logged)
     app.use(
         pinoHttp({
+            genReqId: (req, res) => {
+                const incoming = req.headers["x-request-id"];
+                const id = Array.isArray(incoming) ? incoming[0] : incoming;
+                const reqId = id ?? crypto.randomUUID();
+                res.setHeader("X-Request-Id", reqId);
+                return reqId;
+            },
             redact: {
                 paths: [
                     "req.headers.authorization",
@@ -39,9 +48,18 @@ export function createApp() {
 
     // 2) Security + CORS (BEFORE routes)
     app.use(helmet());
+    const corsOrigins = (env.CORS_ORIGINS ?? "")
+        .split(",")
+        .map((o) => o.trim())
+        .filter(Boolean);
     app.use(
         cors({
-            origin: true,
+            origin: (origin, callback) => {
+                if (!origin) return callback(null, true);
+                if (corsOrigins.length === 0) return callback(null, false);
+                if (corsOrigins.includes(origin)) return callback(null, true);
+                return callback(Object.assign(new Error("Not allowed by CORS"), { status: 403 }));
+            },
             credentials: true,
             methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
         })
@@ -51,6 +69,23 @@ export function createApp() {
     app.use(express.json({ limit: "200kb" }));
     app.use(express.urlencoded({ extended: true, limit: "200kb" }));
     app.use(cookieParser());
+
+    const authLimiter = rateLimit({
+        windowMs: env.RATE_LIMIT_WINDOW_MS,
+        max: env.RATE_LIMIT_AUTH_MAX,
+        standardHeaders: true,
+        legacyHeaders: false,
+    });
+
+    const apiLimiter = rateLimit({
+        windowMs: env.RATE_LIMIT_WINDOW_MS,
+        max: env.RATE_LIMIT_API_MAX,
+        standardHeaders: true,
+        legacyHeaders: false,
+    });
+
+    app.use("/api/v1/auth", authLimiter);
+    app.use("/api/v1", apiLimiter);
 
     // 4) Routes
     app.use("/api/v1", v1Router);
@@ -81,9 +116,15 @@ export function createApp() {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
             return res.status(409).json({ message: "Duplicate", meta: err.meta });
         }
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+            return res.status(404).json({ message: "Not found" });
+        }
 
         const status = err?.status || 500;
-        return res.status(status).json({ message: err?.message });
+        if (status >= 500 && env.NODE_ENV === "production") {
+            return res.status(status).json({ message: "Internal server error" });
+        }
+        return res.status(status).json({ message: err?.message ?? "Internal server error" });
     });
 
     return app;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { moneySchema } from "../../utils/validation";
+import { moneyBigIntPositiveSchema } from "../../utils/validation";
 
 export const invoiceIdParamSchema = z.object({
     invoiceId: z.preprocess(
@@ -16,7 +16,7 @@ export const paymentIdParamSchema = z.object({
 });
 
 export const createPaymentSchema = z.object({
-    amount: moneySchema,          // <-- bigint output
+    amount: moneyBigIntPositiveSchema,          // <-- bigint output
     method: z.enum(["CASH","CARD","TRANSFER"]),
     note: z.string().optional(),
 });
