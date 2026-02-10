@@ -1,8 +1,8 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
-import { createWarehouseInvoiceSchema } from "./invoice.schemas";
-import { createWarehouseInvoice } from "./invoice.service";
+import { createWarehouseInvoiceSchema, invoiceIdParamSchema, listInvoicesSchema } from "./invoice.schemas";
+import { createWarehouseInvoice, getInvoiceById, listInvoices } from "./invoice.service";
 import { serializeBigInt } from "../../utils/bigint";
 
 export async function createWarehouse(req: AuthedRequest, res: Response, next: NextFunction) {
@@ -24,6 +24,38 @@ export async function createWarehouse(req: AuthedRequest, res: Response, next: N
         });
 
         res.status(201).json(serializeBigInt(result));
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function getById(req: AuthedRequest, res: Response, next: NextFunction) {
+    try {
+        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const params = invoiceIdParamSchema.parse(req.params);
+
+        const result = await getInvoiceById({
+            sellerId,
+            invoiceId: params.id,
+        });
+
+        res.json(serializeBigInt(result));
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function list(req: AuthedRequest, res: Response, next: NextFunction) {
+    try {
+        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const query = listInvoicesSchema.parse(req.query);
+
+        const result = await listInvoices({
+            sellerId,
+            ...query,
+        });
+
+        res.json(serializeBigInt(result));
     } catch (e) {
         next(e);
     }

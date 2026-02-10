@@ -4,6 +4,7 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import cookieParser from "cookie-parser";
 import { ZodError } from "zod";
+import { Prisma } from "@prisma/client";
 
 import { env } from "./config/env";
 import { prisma } from "./prisma/client";
@@ -69,6 +70,10 @@ export function createApp() {
         // jsonwebtoken errors -> 401 (refresh/login)
         if (err?.name === "JsonWebTokenError" || err?.name === "TokenExpiredError") {
             return res.status(401).json({ message: "Unauthorized" });
+        }
+
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+            return res.status(409).json({ message: "Duplicate", meta: err.meta });
         }
 
         const status = err?.status || 500;

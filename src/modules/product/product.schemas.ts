@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { priceSchema } from "../../utils/validation";
 
 export const createProductSchema = z.object({
     name: z.string().min(1),
@@ -6,11 +7,6 @@ export const createProductSchema = z.object({
 });
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;
-
-export const priceSchema = z.union([
-    z.number().int().positive(),
-    z.string().regex(/^\d+$/).transform((v) => Number(v)),
-]);
 
 export const createVariantSchema = z.object({
     sku: z.string().min(1),
