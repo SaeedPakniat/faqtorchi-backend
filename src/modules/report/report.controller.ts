@@ -1,8 +1,13 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
-import { getAccountsReceivable, getLowStock, getSalesReport, getTopProducts } from "./report.service";
-import { lowStockQuerySchema, salesReportQuerySchema, topProductsQuerySchema } from "./report.schemas";
+import { getAccountsReceivable, getDiscountsReport, getLowStock, getSalesReport, getTopProducts } from "./report.service";
+import {
+    discountsReportQuerySchema,
+    lowStockQuerySchema,
+    salesReportQuerySchema,
+    topProductsQuerySchema,
+} from "./report.schemas";
 
 export async function sales(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
@@ -41,6 +46,17 @@ export async function lowStock(req: AuthedRequest, res: Response, next: NextFunc
         const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
         const query = lowStockQuerySchema.parse(req.query);
         const result = await getLowStock({ sellerId, ...query });
+        res.json(result);
+    } catch (e) {
+        next(e);
+    }
+}
+
+export async function discounts(req: AuthedRequest, res: Response, next: NextFunction) {
+    try {
+        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const query = discountsReportQuerySchema.parse(req.query);
+        const result = await getDiscountsReport({ sellerId, ...query });
         res.json(result);
     } catch (e) {
         next(e);

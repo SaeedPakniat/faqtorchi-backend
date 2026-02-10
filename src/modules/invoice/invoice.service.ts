@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import type { CreateInstantInvoiceInput, CreateWarehouseInvoiceInput, ListInvoicesInput } from "./invoice.schemas";
 import { toBigInt } from "../../utils/bigint";
 import { getExchangeRateSnapshot } from "../exchangeRate/exchangeRate.service";
+import { sendInvoiceIssuedNotification } from "../common/notification";
 import fs from "fs";
 import path from "path";
 import PDFDocument from "pdfkit";
@@ -31,6 +32,7 @@ async function renderInvoicePdf(invoice: {
     issuedAt: Date;
     customerName: string | null;
     customerPhone: string | null;
+    extra?: unknown;
     seller: { storeName: string };
     items: Array<{
         description: string | null;
@@ -72,6 +74,14 @@ async function renderInvoicePdf(invoice: {
     doc.text(`Tax: ${invoice.tax.toString()}`);
     doc.text(`Total: ${invoice.total.toString()}`);
 
+    const extraObject =
+        invoice.extra && typeof invoice.extra === "object" && !Array.isArray(invoice.extra) ? invoice.extra : null;
+    if (extraObject && Object.keys(extraObject as Record<string, unknown>).length > 0) {
+        doc.moveDown(1);
+        doc.text("Extra:");
+        doc.text(JSON.stringify(extraObject));
+    }
+
     doc.end();
 
     await new Promise<void>((resolve, reject) => {
@@ -86,6 +96,50 @@ async function assertCustomerOwnership(tx: Prisma.TransactionClient, sellerId: n
         select: { id: true },
     });
     if (!customer) throw Object.assign(new Error("Customer not found"), { status: 404 });
+}
+
+async function getDiscountFromCode(params: {
+    tx: Prisma.TransactionClient;
+    sellerId: number;
+    code: string;
+    items: { variantId: number | null; lineTotal: bigint }[];
+    subtotal: bigint;
+}) {
+    const now = new Date();
+    const discount = await params.tx.discountCode.findFirst({
+        where: { sellerId: params.sellerId, code: params.code.toUpperCase() },
+    });
+    if (!discount || !discount.isActive) {
+        throw Object.assign(new Error("Discount code not found"), { status: 404 });
+    }
+    if (discount.startsAt && discount.startsAt > now) {
+        throw Object.assign(new Error("Discount code not active yet"), { status: 400 });
+    }
+    if (discount.endsAt && discount.endsAt < now) {
+        throw Object.assign(new Error("Discount code expired"), { status: 400 });
+    }
+    if (discount.maxUses != null && discount.usedCount >= discount.maxUses) {
+        throw Object.assign(new Error("Discount code usage limit reached"), { status: 400 });
+    }
+
+    const baseTotal = discount.variantId
+        ? params.items
+              .filter((i) => i.variantId === discount.variantId)
+              .reduce((acc, i) => acc + i.lineTotal, 0n)
+        : params.subtotal;
+
+    if (discount.variantId && baseTotal === 0n) {
+        throw Object.assign(new Error("Discount code not applicable"), { status: 400 });
+    }
+
+    let amount = 0n;
+    if (discount.type === "FIXED") {
+        amount = discount.value > baseTotal ? baseTotal : discount.value;
+    } else {
+        amount = (baseTotal * discount.value) / 100n;
+    }
+
+    return { amount, discountCodeId: discount.id };
 }
 
 export async function createWarehouseInvoice(params: {
@@ -139,13 +193,34 @@ export async function createWarehouseInvoice(params: {
         });
 
         const subtotal = itemsPrepared.reduce((sum, it) => sum + it.lineTotal, 0n);
-        const discount = toBigInt(params.discount);
-        const tax = toBigInt(params.tax);
+        const discountManual = toBigInt(params.discount);
+        const discountPercent = params.discountPercent ?? 0n;
+        const discountFromPercent = (subtotal * discountPercent) / 100n;
 
+        const taxManual = toBigInt(params.tax);
+        const taxPercent = params.taxPercent ?? 0n;
+        const taxFromPercent = (subtotal * taxPercent) / 100n;
+
+        let discountFromCode = 0n;
+        let discountCodeId: number | null = null;
+        if (params.discountCode) {
+            const applied = await getDiscountFromCode({
+                tx,
+                sellerId: params.sellerId,
+                code: params.discountCode,
+                items: itemsPrepared.map((it) => ({ variantId: it.variantId, lineTotal: it.lineTotal })),
+                subtotal,
+            });
+            discountFromCode = applied.amount;
+            discountCodeId = applied.discountCodeId;
+        }
+
+        const discount = discountManual + discountFromCode + discountFromPercent;
         if (discount > subtotal) {
             throw Object.assign(new Error("Discount cannot exceed subtotal"), { status: 400 });
         }
 
+        const tax = taxManual + taxFromPercent;
         const total = subtotal - discount + tax;
         if (total < 0n) {
             throw Object.assign(new Error("Total cannot be negative"), { status: 400 });
@@ -168,6 +243,8 @@ export async function createWarehouseInvoice(params: {
                 discount,
                 tax,
                 total,
+                discountCodeId,
+                extra: params.extra ?? undefined,
                 exchangeRateBase: exchangeRate?.base ?? null,
                 exchangeRateQuote: exchangeRate?.quote ?? null,
                 exchangeRateValue: exchangeRate?.rate ?? null,
@@ -224,6 +301,13 @@ export async function createWarehouseInvoice(params: {
             });
         }
 
+        if (discountCodeId) {
+            await tx.discountCode.update({
+                where: { id: discountCodeId },
+                data: { usedCount: { increment: 1 } },
+            });
+        }
+
         return { invoice };
     });
 }
@@ -254,13 +338,34 @@ export async function createInstantInvoice(params: {
         });
 
         const subtotal = itemsPrepared.reduce((sum, it) => sum + it.lineTotal, 0n);
-        const discount = toBigInt(params.discount);
-        const tax = toBigInt(params.tax);
+        const discountManual = toBigInt(params.discount);
+        const discountPercent = params.discountPercent ?? 0n;
+        const discountFromPercent = (subtotal * discountPercent) / 100n;
 
+        const taxManual = toBigInt(params.tax);
+        const taxPercent = params.taxPercent ?? 0n;
+        const taxFromPercent = (subtotal * taxPercent) / 100n;
+
+        let discountFromCode = 0n;
+        let discountCodeId: number | null = null;
+        if (params.discountCode) {
+            const applied = await getDiscountFromCode({
+                tx,
+                sellerId: params.sellerId,
+                code: params.discountCode,
+                items: itemsPrepared.map((it) => ({ variantId: it.variantId, lineTotal: it.lineTotal })),
+                subtotal,
+            });
+            discountFromCode = applied.amount;
+            discountCodeId = applied.discountCodeId;
+        }
+
+        const discount = discountManual + discountFromCode + discountFromPercent;
         if (discount > subtotal) {
             throw Object.assign(new Error("Discount cannot exceed subtotal"), { status: 400 });
         }
 
+        const tax = taxManual + taxFromPercent;
         const total = subtotal - discount + tax;
         if (total < 0n) {
             throw Object.assign(new Error("Total cannot be negative"), { status: 400 });
@@ -282,6 +387,8 @@ export async function createInstantInvoice(params: {
                 discount,
                 tax,
                 total,
+                discountCodeId,
+                extra: params.extra ?? undefined,
                 exchangeRateBase: exchangeRate?.base ?? null,
                 exchangeRateQuote: exchangeRate?.quote ?? null,
                 exchangeRateValue: exchangeRate?.rate ?? null,
@@ -304,6 +411,13 @@ export async function createInstantInvoice(params: {
                 },
             },
         });
+
+        if (discountCodeId) {
+            await tx.discountCode.update({
+                where: { id: discountCodeId },
+                data: { usedCount: { increment: 1 } },
+            });
+        }
 
         return { invoice };
     });
@@ -398,6 +512,7 @@ export async function generateInvoicePdf(params: { sellerId: number; invoiceId: 
             issuedAt: invoice.issuedAt,
             customerName: invoice.customerName,
             customerPhone: invoice.customerPhone,
+            extra: invoice.extra ?? null,
             seller: invoice.seller,
             items: invoice.items,
         },
@@ -467,6 +582,28 @@ export async function getInvoicePdfByToken(params: { token: string }) {
         throw Object.assign(new Error("PDF not found"), { status: 404 });
     }
     return { fullPath, fileName: path.basename(fullPath) };
+}
+
+export async function notifyInvoiceIssued(params: { sellerId: number; invoiceId: number }) {
+    const invoice = await prisma.invoice.findFirst({
+        where: { id: params.invoiceId, sellerId: params.sellerId },
+        select: {
+            id: true,
+            customerPhone: true,
+            customer: { select: { phone: true } },
+            pdfToken: true,
+        },
+    });
+
+    if (!invoice) return;
+
+    const phone = invoice.customerPhone ?? invoice.customer?.phone ?? null;
+    const pdfUrl = invoice.pdfToken ? `/api/v1/public/invoices/${invoice.pdfToken}/pdf` : undefined;
+    const message = pdfUrl
+        ? `Invoice ${invoice.id} is issued. PDF: ${pdfUrl}`
+        : `Invoice ${invoice.id} is issued.`;
+
+    await sendInvoiceIssuedNotification({ phone, message });
 }
 
 export async function cancelInvoice(params: { sellerId: number; invoiceId: number }) {

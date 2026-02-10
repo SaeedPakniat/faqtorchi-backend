@@ -69,6 +69,7 @@ model SellerProfile {
   invoices   Invoice[]
   customers  SellerCustomer[]
   reminders  Reminder[]
+  discountCodes DiscountCode[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -150,6 +151,7 @@ model ProductVariant {
 
   inventories  Inventory[]
   invoiceItems InvoiceItem[]
+  discountCodes DiscountCode[]
 
   @@unique([productId, sku])
 }
@@ -198,6 +200,11 @@ enum Currency {
   IRT
   USD
   EUR
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
 }
 
 enum InvoiceType {
@@ -267,6 +274,37 @@ model ExchangeRate {
   @@index([base, quote, fetchedAt])
 }
 
+model DiscountCode {
+  id Int @id @default(autoincrement())
+
+  sellerId Int
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  code String
+  type DiscountType
+  value BigInt
+
+  variantId Int?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  maxUses   Int?
+  usedCount Int @default(0)
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  isActive Boolean @default(true)
+
+  invoices Invoice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sellerId, code])
+  @@index([sellerId])
+  @@index([variantId])
+}
+
 model Invoice {
   id       Int           @id @default(autoincrement())
   sellerId Int
@@ -282,6 +320,11 @@ model Invoice {
   // Snapshot (supports non-member invoices + preserves history)
   customerName  String?
   customerPhone String?
+
+  discountCodeId Int?
+  discountCode   DiscountCode? @relation(fields: [discountCodeId], references: [id], onDelete: SetNull)
+
+  extra Json?
 
   currency Currency
   // money in minor units
@@ -318,6 +361,7 @@ model Invoice {
   @@index([warehouseId])
   @@index([sellerId])
   @@index([customerId])
+  @@index([discountCodeId])
   @@index([issuedAt])
 }
 
@@ -366,4 +410,18 @@ model Reminder {
   @@index([sellerId])
   @@index([invoiceId])
   @@index([remindAt])
+}
+
+model CustomerAccessToken {
+  id Int @id @default(autoincrement())
+
+  phone     String
+  tokenHash String
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+  @@index([expiresAt])
+  @@unique([tokenHash])
 }

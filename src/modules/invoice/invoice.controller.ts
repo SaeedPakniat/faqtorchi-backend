@@ -19,6 +19,7 @@ import {
     getInvoicePdfByToken,
     getInvoicePdfForSeller,
     listInvoices,
+    notifyInvoiceIssued,
 } from "./invoice.service";
 
 export async function createWarehouse(req: AuthedRequest, res: Response, next: NextFunction) {
@@ -34,10 +35,21 @@ export async function createWarehouse(req: AuthedRequest, res: Response, next: N
             customerId: input.customerId,
             customerName: input.customerName,
             customerPhone: input.customerPhone,
+            discountCode: input.discountCode,
             discount: input.discount,
+            discountPercent: input.discountPercent,
             tax: input.tax,
+            taxPercent: input.taxPercent,
+            extra: input.extra,
             items: input.items,
         });
+
+        try {
+            await generateInvoicePdf({ sellerId, invoiceId: result.invoice.id });
+            await notifyInvoiceIssued({ sellerId, invoiceId: result.invoice.id });
+        } catch (err) {
+            console.warn("Invoice post-create tasks failed", err);
+        }
 
         res.status(201).json(result);
     } catch (e) {
@@ -57,10 +69,21 @@ export async function createInstant(req: AuthedRequest, res: Response, next: Nex
             customerId: input.customerId,
             customerName: input.customerName,
             customerPhone: input.customerPhone,
+            discountCode: input.discountCode,
             discount: input.discount,
+            discountPercent: input.discountPercent,
             tax: input.tax,
+            taxPercent: input.taxPercent,
+            extra: input.extra,
             items: input.items,
         });
+
+        try {
+            await generateInvoicePdf({ sellerId, invoiceId: result.invoice.id });
+            await notifyInvoiceIssued({ sellerId, invoiceId: result.invoice.id });
+        } catch (err) {
+            console.warn("Invoice post-create tasks failed", err);
+        }
 
         res.status(201).json(result);
     } catch (e) {

@@ -1,5 +1,5 @@
 import { prisma } from "../../prisma/client";
-import type { LowStockQuery, SalesReportQuery, TopProductsQuery } from "./report.schemas";
+import type { DiscountsReportQuery, LowStockQuery, SalesReportQuery, TopProductsQuery } from "./report.schemas";
 
 export async function getSalesReport(params: { sellerId: number } & SalesReportQuery) {
     const whereInvoice: any = { sellerId: params.sellerId };
@@ -136,4 +136,34 @@ export async function getLowStock(params: { sellerId: number } & LowStockQuery) 
     });
 
     return { inventory };
+}
+
+export async function getDiscountsReport(params: { sellerId: number } & DiscountsReportQuery) {
+    const whereInvoice: any = { sellerId: params.sellerId, discount: { gt: 0 } };
+    if (params.from || params.to) {
+        whereInvoice.issuedAt = {};
+        if (params.from) whereInvoice.issuedAt.gte = new Date(params.from);
+        if (params.to) whereInvoice.issuedAt.lte = new Date(params.to);
+    }
+
+    const invoices = await prisma.invoice.findMany({
+        where: whereInvoice,
+        select: { currency: true, discount: true, id: true },
+    });
+
+    const totalByCurrency = new Map<string, bigint>();
+    const countByCurrency = new Map<string, number>();
+    for (const inv of invoices) {
+        totalByCurrency.set(inv.currency, (totalByCurrency.get(inv.currency) ?? 0n) + inv.discount);
+        countByCurrency.set(inv.currency, (countByCurrency.get(inv.currency) ?? 0) + 1);
+    }
+
+    return {
+        count: invoices.length,
+        discountsByCurrency: Array.from(totalByCurrency.entries()).map(([currency, total]) => ({
+            currency,
+            total,
+            count: countByCurrency.get(currency) ?? 0,
+        })),
+    };
 }

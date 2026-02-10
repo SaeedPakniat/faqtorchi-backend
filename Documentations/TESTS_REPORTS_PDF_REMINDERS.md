@@ -87,3 +87,10 @@ Low stock:
 curl -s "http://localhost:3000/api/v1/reports/low-stock?threshold=5&warehouseId=1" \
   -H "Authorization: Bearer $TOKEN" | cat
 ```
+
+Discounts report:
+
+```bash
+curl -s "http://localhost:3000/api/v1/reports/discounts?from=2026-02-01T00:00:00.000Z&to=2026-02-28T23:59:59.000Z" \
+  -H "Authorization: Bearer $TOKEN" | cat
+```

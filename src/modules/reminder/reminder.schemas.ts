@@ -19,7 +19,7 @@ export const createRemindersSchema = z.object({
         .array(
             z.object({
                 dueAt: z.string().datetime(),
-                remindDaysBefore: z.number().int().min(1).max(30),
+                remindDaysBefore: z.number().int().min(1).max(3),
                 channel: z.enum(["SMS", "NOTIF"]),
                 message: z.string().max(500).optional(),
             })

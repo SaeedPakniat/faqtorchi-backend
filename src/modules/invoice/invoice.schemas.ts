@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { moneyBigIntSchema } from "../../utils/validation";
+import { moneyBigIntSchema, percentBigIntSchema } from "../../utils/validation";
 
 export const warehouseInvoiceItemSchema = z.object({
     variantId: z.number().int().positive(),
@@ -25,9 +25,13 @@ export const createWarehouseInvoiceSchema = z.object({
     customerName: z.string().max(120).optional(),
     customerPhone: z.string().max(40).optional(),
 
+    discountCode: z.string().min(3).max(64).optional(),
     discount: moneyBigIntSchema.default(0n),
+    discountPercent: percentBigIntSchema.optional(),
     tax: moneyBigIntSchema.default(0n),
+    taxPercent: percentBigIntSchema.optional(),
 
+    extra: z.record(z.string(), z.any()).optional(),
     items: z.array(warehouseInvoiceItemSchema).min(1),
 });
 
@@ -43,9 +47,13 @@ export const createInstantInvoiceSchema = z.object({
     customerName: z.string().max(120).optional(),
     customerPhone: z.string().max(40).optional(),
 
+    discountCode: z.string().min(3).max(64).optional(),
     discount: moneyBigIntSchema.default(0n),
+    discountPercent: percentBigIntSchema.optional(),
     tax: moneyBigIntSchema.default(0n),
+    taxPercent: percentBigIntSchema.optional(),
 
+    extra: z.record(z.string(), z.any()).optional(),
     items: z.array(instantInvoiceItemSchema).min(1),
 });
 

@@ -5,6 +5,11 @@ export const salesReportQuerySchema = z.object({
     to: z.string().datetime().optional(),
 });
 
+export const discountsReportQuerySchema = z.object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+});
+
 export const topProductsQuerySchema = z.object({
     limit: z.preprocess(
         (v) => (typeof v === "string" ? Number(v) : v),
@@ -23,5 +28,6 @@ export const lowStockQuerySchema = z.object({
 });
 
 export type SalesReportQuery = z.infer<typeof salesReportQuerySchema>;
+export type DiscountsReportQuery = z.infer<typeof discountsReportQuerySchema>;
 export type TopProductsQuery = z.infer<typeof topProductsQuerySchema>;
 export type LowStockQuery = z.infer<typeof lowStockQuerySchema>;
