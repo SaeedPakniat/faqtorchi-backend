@@ -124,7 +124,7 @@ model ProductVariant {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   sku        String
-  price      Int // store in minor units
+  price      BigInt // store in minor units
   attributes Json?
 
   createdAt DateTime @default(now())
@@ -212,7 +212,7 @@ model Payment {
   invoiceId Int
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  amount Int // minor units, in invoice currency
+  amount BigInt // minor units, in invoice currency
   method PaymentMethod
   status PaymentStatus @default(RECORDED)
 
@@ -244,10 +244,10 @@ model Invoice {
 
   currency Currency
   // money in minor units
-  subtotal Int
-  discount Int      @default(0)
-  tax      Int      @default(0)
-  total    Int
+  subtotal BigInt
+  discount BigInt   @default(0)
+  tax      BigInt   @default(0)
+  total    BigInt
 
   issuedAt DateTime @default(now())
 
@@ -281,8 +281,8 @@ model InvoiceItem {
 
   description String?
   quantity    Int
-  unitPrice   Int // minor units
-  lineTotal   Int
+  unitPrice   BigInt // minor units
+  lineTotal   BigInt
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
