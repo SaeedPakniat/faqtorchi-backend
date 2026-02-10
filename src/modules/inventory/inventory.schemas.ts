@@ -17,3 +17,12 @@ export const listInventorySchema = z.object({
 });
 
 export type ListInventoryInput = z.infer<typeof listInventorySchema>;
+
+export const listLedgerSchema = z.object({
+    inventoryId: z.preprocess(
+        (v) => (typeof v === "string" ? Number(v) : v),
+        z.number().int().positive()
+    ),
+});
+
+export type ListLedgerInput = z.infer<typeof listLedgerSchema>;

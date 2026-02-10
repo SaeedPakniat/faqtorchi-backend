@@ -113,3 +113,33 @@ export async function listInventory(params: { sellerId: number; warehouseId: num
 
     return { inventory };
 }
+
+export async function listInventoryLedger(params: { userId: number; inventoryId: number }) {
+    const inventory = await prisma.inventory.findUnique({
+        where: { id: params.inventoryId },
+        select: {
+            id: true,
+            warehouse: {
+                select: {
+                    seller: { select: { userId: true } },
+                },
+            },
+        },
+    });
+
+    if (!inventory) {
+        throw Object.assign(new Error("Inventory not found"), { status: 404 });
+    }
+
+    if (inventory.warehouse.seller.userId !== params.userId) {
+        throw Object.assign(new Error("Forbidden"), { status: 403 });
+    }
+
+    const ledger = await prisma.inventoryLedger.findMany({
+        where: { inventoryId: params.inventoryId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { id: true, changeType: true, delta: true, note: true, createdAt: true },
+    });
+
+    return { inventoryId: params.inventoryId, ledger };
+}
