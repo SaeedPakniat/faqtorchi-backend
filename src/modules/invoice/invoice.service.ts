@@ -1,5 +1,5 @@
 import { prisma } from "../../prisma/client";
-import type { CreateWarehouseInvoiceInput } from "./invoice.schemas";
+import type { CreateWarehouseInvoiceInput, ListInvoicesInput } from "./invoice.schemas";
 import { toBigInt } from "../../utils/bigint";
 
 export async function createWarehouseInvoice(params: {
@@ -128,4 +128,68 @@ export async function createWarehouseInvoice(params: {
 
         return { invoice };
     });
+}
+
+export async function getInvoiceById(params: { sellerId: number; invoiceId: number }) {
+    const invoice = await prisma.invoice.findFirst({
+        where: { id: params.invoiceId, sellerId: params.sellerId },
+        include: {
+            items: {
+                include: {
+                    variant: {
+                        select: {
+                            id: true,
+                            sku: true,
+                            price: true,
+                            attributes: true,
+                            product: { select: { id: true, name: true } },
+                        },
+                    },
+                },
+            },
+            payments: {
+                orderBy: [{ paidAt: "desc" }, { id: "desc" }],
+            },
+            warehouse: { select: { id: true, name: true, location: true } },
+        },
+    });
+
+    if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
+
+    return { invoice };
+}
+
+export async function listInvoices(params: { sellerId: number } & ListInvoicesInput) {
+    const where: Record<string, unknown> = { sellerId: params.sellerId };
+
+    if (params.status) where.status = params.status;
+    if (params.type) where.type = params.type;
+
+    if (params.from || params.to) {
+        where.issuedAt = {
+            ...(params.from ? { gte: new Date(params.from) } : {}),
+            ...(params.to ? { lte: new Date(params.to) } : {}),
+        };
+    }
+
+    const page = params.page ?? 1;
+    const pageSize = params.pageSize ?? 20;
+    const skip = (page - 1) * pageSize;
+
+    const [invoices, total] = await Promise.all([
+        prisma.invoice.findMany({
+            where,
+            orderBy: [{ issuedAt: "desc" }],
+            skip,
+            take: pageSize,
+        }),
+        prisma.invoice.count({ where }),
+    ]);
+
+    return {
+        page,
+        pageSize,
+        total,
+        invoices,
+    };
 }
