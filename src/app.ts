@@ -10,6 +10,12 @@ import { env } from "./config/env";
 import { prisma } from "./prisma/client";
 import v1Router from "./routes/v1";
 
+if (typeof (BigInt.prototype as any).toJSON !== "function") {
+    (BigInt.prototype as any).toJSON = function () {
+        return this.toString();
+    };
+}
+
 export function createApp() {
     const app = express();
 

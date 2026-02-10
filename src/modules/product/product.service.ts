@@ -42,7 +42,7 @@ export async function createVariant(params: {
     sellerId: number;
     productId: number;
     sku: string;
-    price: number | string;
+    price: number | string | bigint;
     attributes?: Record<string, any>;
 }) {
     // ensure product belongs to seller

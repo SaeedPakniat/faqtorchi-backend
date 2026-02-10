@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { moneySchema } from "../../utils/validation";
 
 export const warehouseInvoiceItemSchema = z.object({
     variantId: z.number().int().positive(),
@@ -18,8 +19,8 @@ export const createWarehouseInvoiceSchema = z.object({
     customerName: z.string().max(120).optional(),
     customerPhone: z.string().max(40).optional(),
 
-    discount: z.union([z.number().int().nonnegative(), z.string().regex(/^\\d+$/)]).default("0"),
-    tax: z.union([z.number().int().nonnegative(), z.string().regex(/^\\d+$/)]).default("0"),
+    discount: moneySchema.default(0n),
+    tax: moneySchema.default(0n),
 
     items: z.array(warehouseInvoiceItemSchema).min(1),
 });

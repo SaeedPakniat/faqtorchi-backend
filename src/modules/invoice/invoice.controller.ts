@@ -3,7 +3,6 @@ import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
 import { createWarehouseInvoiceSchema, invoiceIdParamSchema, listInvoicesSchema } from "./invoice.schemas";
 import { createWarehouseInvoice, getInvoiceById, listInvoices } from "./invoice.service";
-import { serializeBigInt } from "../../utils/bigint";
 
 export async function createWarehouse(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
@@ -23,7 +22,7 @@ export async function createWarehouse(req: AuthedRequest, res: Response, next: N
             items: input.items,
         });
 
-        res.status(201).json(serializeBigInt(result));
+        res.status(201).json(result);
     } catch (e) {
         next(e);
     }
@@ -39,7 +38,7 @@ export async function getById(req: AuthedRequest, res: Response, next: NextFunct
             invoiceId: params.id,
         });
 
-        res.json(serializeBigInt(result));
+        res.json(result);
     } catch (e) {
         next(e);
     }
@@ -55,7 +54,7 @@ export async function list(req: AuthedRequest, res: Response, next: NextFunction
             ...query,
         });
 
-        res.json(serializeBigInt(result));
+        res.json(result);
     } catch (e) {
         next(e);
     }

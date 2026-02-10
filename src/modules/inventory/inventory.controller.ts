@@ -1,7 +1,6 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
-import { serializeBigInt } from "../../utils/bigint";
 import { adjustInventorySchema, listInventorySchema, listLedgerSchema } from "./inventory.schemas";
 import { adjustInventory, listInventory, listInventoryLedger } from "./inventory.service";
 
@@ -34,7 +33,7 @@ export async function list(req: AuthedRequest, res: Response, next: NextFunction
             warehouseId: input.warehouseId,
         });
 
-        res.json(serializeBigInt(result));
+        res.json(result);
     } catch (e) {
         next(e);
     }

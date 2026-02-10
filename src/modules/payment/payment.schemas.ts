@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { priceSchema } from "../../utils/validation";
+import { moneySchema } from "../../utils/validation";
 
 export const invoiceIdParamSchema = z.object({
     invoiceId: z.preprocess(
@@ -16,10 +16,9 @@ export const paymentIdParamSchema = z.object({
 });
 
 export const createPaymentSchema = z.object({
-    amount: priceSchema,
-    method: z.enum(["CASH", "CARD", "TRANSFER"]),
-    note: z.string().max(500).optional(),
-    paidAt: z.string().datetime().optional(),
+    amount: moneySchema,          // <-- bigint output
+    method: z.enum(["CASH","CARD","TRANSFER"]),
+    note: z.string().optional(),
 });
 
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;

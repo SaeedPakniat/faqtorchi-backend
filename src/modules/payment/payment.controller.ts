@@ -1,7 +1,6 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
-import { serializeBigInt } from "../../utils/bigint";
 import { createPaymentSchema, invoiceIdParamSchema, paymentIdParamSchema } from "./payment.schemas";
 import { createPaymentForInvoice, listPaymentsForInvoice, voidPayment } from "./payment.service";
 
@@ -17,7 +16,7 @@ export async function createPaymentForInvoiceHandler(req: AuthedRequest, res: Re
             ...body,
         });
 
-        res.status(201).json(serializeBigInt(result));
+        res.status(201).json(result);
     } catch (e) {
         next(e);
     }
@@ -33,7 +32,7 @@ export async function listPaymentsForInvoiceHandler(req: AuthedRequest, res: Res
             invoiceId: params.invoiceId,
         });
 
-        res.json(serializeBigInt(result));
+        res.json(result);
     } catch (e) {
         next(e);
     }
@@ -49,7 +48,7 @@ export async function voidPaymentHandler(req: AuthedRequest, res: Response, next
             paymentId: params.paymentId,
         });
 
-        res.json(serializeBigInt(result));
+        res.json(result);
     } catch (e) {
         next(e);
     }
