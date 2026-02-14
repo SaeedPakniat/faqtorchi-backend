@@ -24,14 +24,14 @@ export async function getSalesReport(params: { sellerId: number } & SalesReportQ
     const invoiceIdToCurrency = new Map(invoices.map((i) => [i.id, i.currency]));
     const payments = await prisma.payment.findMany({
         where: { invoiceId: { in: invoices.map((i) => i.id) }, status: "RECORDED" },
-        select: { invoiceId: true, amount: true },
+        select: { invoiceId: true, amountInvoiceCurrency: true },
     });
 
     const paidByCurrency = new Map<string, bigint>();
     for (const p of payments) {
         const currency = invoiceIdToCurrency.get(p.invoiceId);
         if (!currency) continue;
-        paidByCurrency.set(currency, (paidByCurrency.get(currency) ?? 0n) + p.amount);
+        paidByCurrency.set(currency, (paidByCurrency.get(currency) ?? 0n) + p.amountInvoiceCurrency);
     }
 
     const outstandingByCurrency = new Map<string, bigint>();
@@ -62,13 +62,13 @@ export async function getAccountsReceivable(params: { sellerId: number }) {
     const invoices = await prisma.invoice.findMany({
         where: { sellerId: params.sellerId, status: { not: "PAID" } },
         include: {
-            payments: { where: { status: "RECORDED" }, select: { amount: true } },
+            payments: { where: { status: "RECORDED" }, select: { amountInvoiceCurrency: true } },
         },
         orderBy: { issuedAt: "desc" },
     });
 
     const results = invoices.map((inv) => {
-        const paid = inv.payments.reduce((sum, p) => sum + p.amount, 0n);
+        const paid = inv.payments.reduce((sum, p) => sum + p.amountInvoiceCurrency, 0n);
         return {
             invoice: inv,
             remaining: inv.total - paid,

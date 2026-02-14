@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
+import { assertWarehouseAccess } from "../sellerMember/sellerMember.service";
 import { getAccountsReceivable, getDiscountsReport, getLowStock, getSalesReport, getTopProducts } from "./report.service";
 import {
     discountsReportQuerySchema,
@@ -45,6 +46,9 @@ export async function lowStock(req: AuthedRequest, res: Response, next: NextFunc
     try {
         const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
         const query = lowStockQuerySchema.parse(req.query);
+        if (query.warehouseId) {
+            await assertWarehouseAccess(req.user!.id, query.warehouseId);
+        }
         const result = await getLowStock({ sellerId, ...query });
         res.json(result);
     } catch (e) {

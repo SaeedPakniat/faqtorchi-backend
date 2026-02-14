@@ -423,7 +423,7 @@ export async function createInstantInvoice(params: {
     });
 }
 
-export async function getInvoiceById(params: { sellerId: number; invoiceId: number }) {
+export async function getInvoiceById(params: { sellerId: number; invoiceId: number; allowedWarehouseIds?: number[] | null }) {
     const invoice = await prisma.invoice.findFirst({
         where: { id: params.invoiceId, sellerId: params.sellerId },
         include: {
@@ -448,11 +448,38 @@ export async function getInvoiceById(params: { sellerId: number; invoiceId: numb
     });
 
     if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
+    if (params.allowedWarehouseIds !== undefined && invoice.warehouseId != null) {
+        const allowed = params.allowedWarehouseIds ?? [];
+        if (!allowed.includes(invoice.warehouseId)) {
+            throw Object.assign(new Error("Forbidden"), { status: 403 });
+        }
+    }
 
     return { invoice };
 }
 
-export async function listInvoices(params: { sellerId: number } & ListInvoicesInput) {
+export async function assertInvoiceWarehouseAccess(params: {
+    sellerId: number;
+    invoiceId: number;
+    allowedWarehouseIds?: number[] | null;
+}) {
+    const invoice = await prisma.invoice.findFirst({
+        where: { id: params.invoiceId, sellerId: params.sellerId },
+        select: { id: true, warehouseId: true },
+    });
+
+    if (!invoice) throw Object.assign(new Error("Invoice not found"), { status: 404 });
+    if (params.allowedWarehouseIds !== undefined && invoice.warehouseId != null) {
+        const allowed = params.allowedWarehouseIds ?? [];
+        if (!allowed.includes(invoice.warehouseId)) {
+            throw Object.assign(new Error("Forbidden"), { status: 403 });
+        }
+    }
+
+    return invoice;
+}
+
+export async function listInvoices(params: { sellerId: number; allowedWarehouseIds?: number[] | null } & ListInvoicesInput) {
     const where: Record<string, unknown> = { sellerId: params.sellerId };
 
     if (params.status) where.status = params.status;
@@ -463,6 +490,15 @@ export async function listInvoices(params: { sellerId: number } & ListInvoicesIn
             ...(params.from ? { gte: new Date(params.from) } : {}),
             ...(params.to ? { lte: new Date(params.to) } : {}),
         };
+    }
+
+    if (params.allowedWarehouseIds !== undefined) {
+        const allowed = params.allowedWarehouseIds ?? [];
+        if (allowed.length === 0) {
+            where.warehouseId = null;
+        } else {
+            where.OR = [{ warehouseId: { in: allowed } }, { warehouseId: null }];
+        }
     }
 
     const page = params.page ?? 1;

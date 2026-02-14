@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
+import pino from "pino";
 import rateLimit from "express-rate-limit";
 import cookieParser from "cookie-parser";
 import { ZodError } from "zod";
@@ -21,12 +22,29 @@ if (typeof (BigInt.prototype as any).toJSON !== "function") {
 export function createApp() {
     const app = express();
 
+    const logger =
+        env.NODE_ENV === "production"
+            ? pino()
+            : pino({
+                  transport: {
+                      target: "pino-pretty",
+                      options: {
+                          colorize: true,
+                          translateTime: "SYS:standard",
+                          ignore:
+                              "pid,hostname,req.headers,res.headers,req.remoteAddress,req.remotePort,req.query,req.params",
+                          messageFormat: "{req.method} {req.url} {res.statusCode} {responseTime}ms",
+                      },
+                  },
+              });
+
     // 0) Trust proxy (BEFORE anything that uses req.ip)
     app.set("trust proxy", true);
 
     // 1) Logging (BEFORE routes so every request gets logged)
     app.use(
         pinoHttp({
+            logger,
             genReqId: (req, res) => {
                 const incoming = req.headers["x-request-id"];
                 const id = Array.isArray(incoming) ? incoming[0] : incoming;
@@ -42,6 +60,16 @@ export function createApp() {
                     "req.body.token",
                 ],
                 remove: true,
+            },
+            serializers: {
+                req: (req) => ({
+                    id: req.id,
+                    method: req.method,
+                    url: req.url,
+                }),
+                res: (res) => ({
+                    statusCode: res.statusCode,
+                }),
             },
         })
     );

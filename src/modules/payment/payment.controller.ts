@@ -1,18 +1,25 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
-import { getSellerProfileIdOrThrow } from "../seller/seller.service";
+import { getSellerContextOrThrow } from "../sellerMember/sellerMember.service";
 import { createPaymentSchema, invoiceIdParamSchema, paymentIdParamSchema } from "./payment.schemas";
 import { createPaymentForInvoice, listPaymentsForInvoice, voidPayment } from "./payment.service";
 
 export async function createPaymentForInvoiceHandler(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
-        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const sellerContext = await getSellerContextOrThrow(req.user!.id);
         const params = invoiceIdParamSchema.parse(req.params);
         const body = createPaymentSchema.parse(req.body);
 
+        const allowedWarehouseIds = sellerContext.isOwner
+            ? undefined
+            : sellerContext.permissions?.warehouse
+              ? sellerContext.warehouseIds ?? []
+              : [];
+
         const result = await createPaymentForInvoice({
-            sellerId,
+            sellerId: sellerContext.sellerId,
             invoiceId: params.invoiceId,
+            allowedWarehouseIds,
             ...body,
         });
 
@@ -24,12 +31,19 @@ export async function createPaymentForInvoiceHandler(req: AuthedRequest, res: Re
 
 export async function listPaymentsForInvoiceHandler(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
-        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const sellerContext = await getSellerContextOrThrow(req.user!.id);
         const params = invoiceIdParamSchema.parse(req.params);
 
+        const allowedWarehouseIds = sellerContext.isOwner
+            ? undefined
+            : sellerContext.permissions?.warehouse
+              ? sellerContext.warehouseIds ?? []
+              : [];
+
         const result = await listPaymentsForInvoice({
-            sellerId,
+            sellerId: sellerContext.sellerId,
             invoiceId: params.invoiceId,
+            allowedWarehouseIds,
         });
 
         res.json(result);
@@ -40,12 +54,19 @@ export async function listPaymentsForInvoiceHandler(req: AuthedRequest, res: Res
 
 export async function voidPaymentHandler(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
-        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const sellerContext = await getSellerContextOrThrow(req.user!.id);
         const params = paymentIdParamSchema.parse(req.params);
 
+        const allowedWarehouseIds = sellerContext.isOwner
+            ? undefined
+            : sellerContext.permissions?.warehouse
+              ? sellerContext.warehouseIds ?? []
+              : [];
+
         const result = await voidPayment({
-            sellerId,
+            sellerId: sellerContext.sellerId,
             paymentId: params.paymentId,
+            allowedWarehouseIds,
         });
 
         res.json(result);

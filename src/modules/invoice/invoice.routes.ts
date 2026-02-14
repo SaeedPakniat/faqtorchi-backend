@@ -1,13 +1,15 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/requireAuth";
 import { requireRole } from "../../middlewares/requireRole";
+import { requireSellerPermission } from "../../middlewares/requireSellerPermission";
 import { cancel, createInstant, createWarehouse, createPdf, getById, getPdf, list } from "./invoice.controller";
 import { createPaymentForInvoiceHandler, listPaymentsForInvoiceHandler } from "../payment/payment.controller";
 
 export const invoiceRouter = Router();
 
 invoiceRouter.use(requireAuth);
-invoiceRouter.use(requireRole("SELLER"));
+invoiceRouter.use(requireRole("SELLER", "ADMIN"));
+invoiceRouter.use(requireSellerPermission("invoices"));
 
 invoiceRouter.post("/warehouse", createWarehouse);
 invoiceRouter.post("/instant", createInstant);

@@ -17,6 +17,8 @@ export const paymentIdParamSchema = z.object({
 
 export const createPaymentSchema = z.object({
     amount: moneyBigIntPositiveSchema,          // <-- bigint output
+    currency: z.enum(["IRR", "IRT", "USD", "EUR"]).optional(),
+    exchangeRateValue: moneyBigIntPositiveSchema.optional(),
     method: z.enum(["CASH","CARD","TRANSFER"]),
     note: z.string().optional(),
 });

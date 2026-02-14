@@ -28,8 +28,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sellerProfile   SellerProfile?
-  customerProfile CustomerProfile?
+  sellerProfile         SellerProfile?
+  customerProfile       CustomerProfile?
+  sellerMember          SellerMember?
+  sellerMemberAuditLogs SellerMemberAuditLog[]
 }
 
 model Session {
@@ -64,12 +66,14 @@ model SellerProfile {
 
   storeName String
 
-  warehouses Warehouse[]
-  products   Product[]
-  invoices   Invoice[]
-  customers  SellerCustomer[]
-  reminders  Reminder[]
-  discountCodes DiscountCode[]
+  warehouses      Warehouse[]
+  products        Product[]
+  invoices        Invoice[]
+  customers       SellerCustomer[]
+  reminders       Reminder[]
+  discountCodes   DiscountCode[]
+  members         SellerMember[]
+  memberAuditLogs SellerMemberAuditLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -89,8 +93,8 @@ model SellerCustomer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([sellerId])
   @@unique([sellerId, phone])
+  @@index([sellerId])
 }
 
 model CustomerProfile {
@@ -104,6 +108,69 @@ model CustomerProfile {
   updatedAt DateTime @updatedAt
 }
 
+model SellerMember {
+  id       Int           @id @default(autoincrement())
+  sellerId Int
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  isActive Boolean @default(true)
+
+  canInvoices  Boolean @default(true)
+  canCustomers Boolean @default(true)
+  canProducts  Boolean @default(false)
+  canSettings  Boolean @default(false)
+  canWarehouse Boolean @default(false)
+  canReports   Boolean @default(false)
+
+  warehouses SellerMemberWarehouse[]
+  auditLogs  SellerMemberAuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId])
+}
+
+model SellerMemberWarehouse {
+  id             Int @id @default(autoincrement())
+  sellerMemberId Int
+  warehouseId    Int
+
+  sellerMember SellerMember @relation(fields: [sellerMemberId], references: [id], onDelete: Cascade)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([sellerMemberId, warehouseId])
+  @@index([warehouseId])
+}
+
+model SellerMemberAuditLog {
+  id       Int           @id @default(autoincrement())
+  sellerId Int
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  memberId Int
+  member   SellerMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  action     String
+  method     String
+  path       String
+  statusCode Int?
+  ipAddress  String?
+  userAgent  String?
+  meta       Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([sellerId, memberId])
+  @@index([memberId, createdAt])
+}
+
 model Warehouse {
   id       Int           @id @default(autoincrement())
   sellerId Int
@@ -112,8 +179,9 @@ model Warehouse {
   name     String
   location String?
 
-  inventories Inventory[]
-  invoices    Invoice[]
+  inventories  Inventory[]
+  invoices     Invoice[]
+  memberAccess SellerMemberWarehouse[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -149,8 +217,8 @@ model ProductVariant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  inventories  Inventory[]
-  invoiceItems InvoiceItem[]
+  inventories   Inventory[]
+  invoiceItems  InvoiceItem[]
   discountCodes DiscountCode[]
 
   @@unique([productId, sku])
@@ -248,7 +316,15 @@ model Payment {
   invoiceId Int
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  amount BigInt // minor units, in invoice currency
+  amount                BigInt // minor units, in payment currency
+  currency              Currency @default(IRR)
+  amountInvoiceCurrency BigInt   @default(0) // amount converted to invoice currency (minor units)
+
+  exchangeRateBase      Currency?
+  exchangeRateQuote     Currency?
+  exchangeRateValue     BigInt?
+  exchangeRateFetchedAt DateTime?
+
   method PaymentMethod
   status PaymentStatus @default(RECORDED)
 
@@ -280,15 +356,15 @@ model DiscountCode {
   sellerId Int
   seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
 
-  code String
-  type DiscountType
+  code  String
+  type  DiscountType
   value BigInt
 
   variantId Int?
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   maxUses   Int?
-  usedCount Int @default(0)
+  usedCount Int  @default(0)
 
   startsAt DateTime?
   endsAt   DateTime?
@@ -333,19 +409,19 @@ model Invoice {
   tax      BigInt   @default(0)
   total    BigInt
 
-  exchangeRateBase       Currency?
-  exchangeRateQuote      Currency?
-  exchangeRateValue      BigInt?
-  exchangeRateFetchedAt  DateTime?
+  exchangeRateBase      Currency?
+  exchangeRateQuote     Currency?
+  exchangeRateValue     BigInt?
+  exchangeRateFetchedAt DateTime?
 
   pdfKey         String?
-  pdfToken       String? @unique
+  pdfToken       String?   @unique
   pdfGeneratedAt DateTime?
 
   issuedAt DateTime @default(now())
 
-  items    InvoiceItem[]
-  payments Payment[]
+  items     InvoiceItem[]
+  payments  Payment[]
   reminders Reminder[]
 
   createdAt DateTime @default(now())
@@ -399,7 +475,7 @@ model Reminder {
   remindAt DateTime
 
   channel ReminderChannel
-  status  ReminderStatus @default(PENDING)
+  status  ReminderStatus  @default(PENDING)
 
   message String?
   sentAt  DateTime?
@@ -421,7 +497,7 @@ model CustomerAccessToken {
 
   createdAt DateTime @default(now())
 
+  @@unique([tokenHash])
   @@index([phone])
   @@index([expiresAt])
-  @@unique([tokenHash])
 }

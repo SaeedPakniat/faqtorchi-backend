@@ -55,6 +55,16 @@ curl -s -X POST "http://localhost:3000/api/v1/invoices/$INVOICE_ID/payments" \
   -d '{"amount":"9000","method":"CASH"}' | cat
 ```
 
+## Multi-currency / hybrid payment examples
+
+```bash
+# IRR invoice paid with USD (exchange rate auto-fetched)
+curl -s -X POST "http://localhost:3000/api/v1/invoices/$INVOICE_ID/payments" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"amount":"10","currency":"USD","method":"CASH"}' | cat
+```
+
 ## Cancel invoice (no recorded payments)
 
 ```bash

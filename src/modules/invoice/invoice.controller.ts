@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import { AuthedRequest } from "../../middlewares/requireAuth";
 import { getSellerProfileIdOrThrow } from "../seller/seller.service";
+import { assertWarehouseAccess, getSellerContextOrThrow } from "../sellerMember/sellerMember.service";
 import {
     cancelInvoiceParamSchema,
     createInstantInvoiceSchema,
@@ -15,6 +16,7 @@ import {
     createInstantInvoice,
     createWarehouseInvoice,
     generateInvoicePdf,
+    assertInvoiceWarehouseAccess,
     getInvoiceById,
     getInvoicePdfByToken,
     getInvoicePdfForSeller,
@@ -26,6 +28,8 @@ export async function createWarehouse(req: AuthedRequest, res: Response, next: N
     try {
         const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
         const input = createWarehouseInvoiceSchema.parse(req.body);
+
+        await assertWarehouseAccess(req.user!.id, input.warehouseId);
 
         const result = await createWarehouseInvoice({
             sellerId,
@@ -93,12 +97,19 @@ export async function createInstant(req: AuthedRequest, res: Response, next: Nex
 
 export async function getById(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
-        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const sellerContext = await getSellerContextOrThrow(req.user!.id);
         const params = invoiceIdParamSchema.parse(req.params);
 
+        const allowedWarehouseIds = sellerContext.isOwner
+            ? undefined
+            : sellerContext.permissions?.warehouse
+              ? sellerContext.warehouseIds ?? []
+              : [];
+
         const result = await getInvoiceById({
-            sellerId,
+            sellerId: sellerContext.sellerId,
             invoiceId: params.id,
+            allowedWarehouseIds,
         });
 
         res.json(result);
@@ -109,11 +120,18 @@ export async function getById(req: AuthedRequest, res: Response, next: NextFunct
 
 export async function list(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
-        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const sellerContext = await getSellerContextOrThrow(req.user!.id);
         const query = listInvoicesSchema.parse(req.query);
 
+        const allowedWarehouseIds = sellerContext.isOwner
+            ? undefined
+            : sellerContext.permissions?.warehouse
+              ? sellerContext.warehouseIds ?? []
+              : [];
+
         const result = await listInvoices({
-            sellerId,
+            sellerId: sellerContext.sellerId,
+            allowedWarehouseIds,
             ...query,
         });
 
@@ -141,11 +159,23 @@ export async function cancel(req: AuthedRequest, res: Response, next: NextFuncti
 
 export async function createPdf(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
-        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const sellerContext = await getSellerContextOrThrow(req.user!.id);
         const params = invoicePdfParamSchema.parse(req.params);
 
+        const allowedWarehouseIds = sellerContext.isOwner
+            ? undefined
+            : sellerContext.permissions?.warehouse
+              ? sellerContext.warehouseIds ?? []
+              : [];
+
+        await assertInvoiceWarehouseAccess({
+            sellerId: sellerContext.sellerId,
+            invoiceId: params.invoiceId,
+            allowedWarehouseIds,
+        });
+
         const result = await generateInvoicePdf({
-            sellerId,
+            sellerId: sellerContext.sellerId,
             invoiceId: params.invoiceId,
         });
 
@@ -157,11 +187,23 @@ export async function createPdf(req: AuthedRequest, res: Response, next: NextFun
 
 export async function getPdf(req: AuthedRequest, res: Response, next: NextFunction) {
     try {
-        const sellerId = await getSellerProfileIdOrThrow(req.user!.id);
+        const sellerContext = await getSellerContextOrThrow(req.user!.id);
         const params = invoicePdfParamSchema.parse(req.params);
 
+        const allowedWarehouseIds = sellerContext.isOwner
+            ? undefined
+            : sellerContext.permissions?.warehouse
+              ? sellerContext.warehouseIds ?? []
+              : [];
+
+        await assertInvoiceWarehouseAccess({
+            sellerId: sellerContext.sellerId,
+            invoiceId: params.invoiceId,
+            allowedWarehouseIds,
+        });
+
         const { fullPath, fileName } = await getInvoicePdfForSeller({
-            sellerId,
+            sellerId: sellerContext.sellerId,
             invoiceId: params.invoiceId,
         });
 
