@@ -11,6 +11,431 @@ import crypto from "crypto";
 
 const STORAGE_ROOT = path.join(process.cwd(), "storage");
 
+
+function formatMoney(value: bigint) {
+    return value.toString();
+}
+
+function formatDateShort(value: Date) {
+    const yyyy = value.getFullYear();
+    const mm = String(value.getMonth() + 1).padStart(2, "0");
+    const dd = String(value.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function applyProductDiscount(unitPrice: bigint, discount?: { type: "PERCENT" | "FIXED"; value: bigint }) {
+    if (!discount) return unitPrice;
+    if (discount.type === "FIXED") {
+        const next = unitPrice - discount.value;
+        return next < 0n ? 0n : next;
+    }
+    const reduction = (unitPrice * discount.value) / 100n;
+    const next = unitPrice - reduction;
+    return next < 0n ? 0n : next;
+}
+
+function drawTableRow(doc: PDFKit.PDFDocument, y: number, cols: { x: number; w: number; text: string; align?: PDFKit.Mixins.TextOptions["align"] }[], opts?: { height?: number; fontSize?: number; bold?: boolean }) {
+    const height = opts?.height ?? 22;
+    doc.fontSize(opts?.fontSize ?? 10);
+    doc.font(opts?.bold ? "Helvetica-Bold" : "Helvetica");
+    for (const col of cols) {
+        doc.text(col.text, col.x + 4, y + 6, { width: col.w - 8, align: col.align ?? "left" });
+    }
+    doc.moveTo(cols[0].x, y + height).lineTo(cols[0].x + cols.reduce((a, c) => a + c.w, 0), y + height).stroke("#E3E7ED");
+}
+
+
+
+function renderInvoicePdfSunriseClassic(doc: PDFKit.PDFDocument, invoice: {
+    id: number;
+    currency: string;
+    subtotal: bigint;
+    discount: bigint;
+    tax: bigint;
+    total: bigint;
+    issuedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    seller: { storeName: string };
+    items: Array<{
+        description: string | null;
+        quantity: number;
+        unitPrice: bigint;
+        lineTotal: bigint;
+    }>;
+}) {
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
+    const margin = 36;
+    const orange = "#F39C12";
+    const red = "#E74C3C";
+    const dark = "#2D3436";
+
+    doc.rect(0, 0, pageW, 80).fill(orange);
+    doc.circle(pageW - 70, 40, 24).fill(red);
+    doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(18).text(invoice.seller.storeName, margin, 26);
+    doc.font("Helvetica").fontSize(10).fillColor("#FFFFFF");
+    doc.text(`Invoice #${invoice.id}`, margin, 48);
+
+    doc.fillColor(dark).font("Helvetica").fontSize(10);
+    doc.text(`Issued: ${formatDateShort(invoice.issuedAt)}`, pageW - margin - 140, 26, { width: 140, align: "right" });
+    doc.text(`Currency: ${invoice.currency}`, pageW - margin - 140, 42, { width: 140, align: "right" });
+
+    doc.fillColor("#FFF7ED").rect(margin, 100, pageW - margin * 2, 54).fill();
+    doc.fillColor(dark).font("Helvetica-Bold").fontSize(11).text("Customer", margin + 10, 108);
+    doc.font("Helvetica").fontSize(10).text(`Name: ${invoice.customerName ?? "-"}`, margin + 10, 126);
+    doc.text(`Phone: ${invoice.customerPhone ?? "-"}`, margin + 10, 142);
+
+    const tableY = 170;
+    const tableW = pageW - margin * 2;
+    const cols = [
+        { x: margin, w: 30, label: "#" },
+        { x: margin + 30, w: tableW - 30 - 60 - 80 - 80, label: "Description" },
+        { x: margin + (tableW - 60 - 80 - 80), w: 60, label: "Qty" },
+        { x: margin + (tableW - 80 - 80), w: 80, label: "Unit" },
+        { x: margin + (tableW - 80), w: 80, label: "Line" },
+    ];
+
+    doc.fillColor("#FDEBD0").rect(margin, tableY, tableW, 24).fill();
+    doc.fillColor(dark);
+    drawTableRow(doc, tableY, cols.map(c => ({ x: c.x, w: c.w, text: c.label, align: c.label == "Description" ? "left" : "center" })), { height: 24, fontSize: 10, bold: true });
+
+    let y = tableY + 24;
+    invoice.items.forEach((item, idx) => {
+        drawTableRow(doc, y, [
+            { x: cols[0].x, w: cols[0].w, text: String(idx + 1), align: "center" },
+            { x: cols[1].x, w: cols[1].w, text: item.description ?? "Item", align: "left" },
+            { x: cols[2].x, w: cols[2].w, text: String(item.quantity), align: "center" },
+            { x: cols[3].x, w: cols[3].w, text: formatMoney(item.unitPrice), align: "center" },
+            { x: cols[4].x, w: cols[4].w, text: formatMoney(item.lineTotal), align: "center" },
+        ], { height: 22, fontSize: 10, bold: false });
+        y += 22;
+    });
+
+    const totalsW = 200;
+    const totalsX = pageW - margin - totalsW;
+    const totalsY = y + 16;
+    doc.fillColor("#FFF1E6").rect(totalsX, totalsY, totalsW, 80).fill();
+    doc.fillColor(dark).font("Helvetica").fontSize(10);
+    doc.text(`Subtotal: ${formatMoney(invoice.subtotal)}`, totalsX + 10, totalsY + 10, { width: totalsW - 20, align: "right" });
+    doc.text(`Discount: ${formatMoney(invoice.discount)}`, totalsX + 10, totalsY + 28, { width: totalsW - 20, align: "right" });
+    doc.text(`Tax: ${formatMoney(invoice.tax)}`, totalsX + 10, totalsY + 46, { width: totalsW - 20, align: "right" });
+    doc.font("Helvetica-Bold").text(`Total: ${formatMoney(invoice.total)}`, totalsX + 10, totalsY + 62, { width: totalsW - 20, align: "right" });
+
+    doc.rect(0, pageH - 40, pageW, 40).fill(orange);
+    doc.fillColor("#FFFFFF").font("Helvetica").fontSize(10).text("Thank you", margin, pageH - 26);
+}
+
+function renderInvoicePdfMonoGrid(doc: PDFKit.PDFDocument, invoice: {
+    id: number;
+    currency: string;
+    subtotal: bigint;
+    discount: bigint;
+    tax: bigint;
+    total: bigint;
+    issuedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    seller: { storeName: string };
+    items: Array<{
+        description: string | null;
+        quantity: number;
+        unitPrice: bigint;
+        lineTotal: bigint;
+    }>;
+}) {
+    const pageW = doc.page.width;
+    const margin = 36;
+    const dark = "#111827";
+    const gray = "#E5E7EB";
+
+    doc.fillColor(dark).font("Helvetica-Bold").fontSize(20).text("INVOICE", margin, 24);
+    doc.font("Helvetica").fontSize(10).fillColor(dark).text(`No: ${invoice.id}`, margin, 48);
+    doc.text(`Date: ${formatDateShort(invoice.issuedAt)}`, margin, 62);
+
+    doc.rect(margin, 88, pageW - margin * 2, 1).fill(gray);
+
+    doc.font("Helvetica-Bold").fontSize(11).text(invoice.seller.storeName, margin, 100);
+    doc.font("Helvetica").fontSize(10).text(`To: ${invoice.customerName ?? "-"}`, margin, 118);
+    doc.text(`Phone: ${invoice.customerPhone ?? "-"}`, margin, 134);
+
+    const tableY = 160;
+    const tableW = pageW - margin * 2;
+    const cols = [
+        { x: margin, w: 30, label: "#" },
+        { x: margin + 30, w: tableW - 30 - 60 - 80 - 80, label: "Description" },
+        { x: margin + (tableW - 60 - 80 - 80), w: 60, label: "Qty" },
+        { x: margin + (tableW - 80 - 80), w: 80, label: "Unit" },
+        { x: margin + (tableW - 80), w: 80, label: "Line" },
+    ];
+
+    doc.rect(margin, tableY, tableW, 24).fill(gray);
+    doc.fillColor(dark);
+    drawTableRow(doc, tableY, cols.map(c => ({ x: c.x, w: c.w, text: c.label, align: c.label == "Description" ? "left" : "center" })), { height: 24, fontSize: 10, bold: true });
+
+    let y = tableY + 24;
+    invoice.items.forEach((item, idx) => {
+        drawTableRow(doc, y, [
+            { x: cols[0].x, w: cols[0].w, text: String(idx + 1), align: "center" },
+            { x: cols[1].x, w: cols[1].w, text: item.description ?? "Item", align: "left" },
+            { x: cols[2].x, w: cols[2].w, text: String(item.quantity), align: "center" },
+            { x: cols[3].x, w: cols[3].w, text: formatMoney(item.unitPrice), align: "center" },
+            { x: cols[4].x, w: cols[4].w, text: formatMoney(item.lineTotal), align: "center" },
+        ], { height: 22, fontSize: 10, bold: false });
+        y += 22;
+    });
+
+    const totalsW = 200;
+    const totalsX = pageW - margin - totalsW;
+    const totalsY = y + 16;
+    doc.rect(totalsX, totalsY, totalsW, 80).fill(gray);
+    doc.fillColor(dark).font("Helvetica").fontSize(10);
+    doc.text(`Subtotal: ${formatMoney(invoice.subtotal)}`, totalsX + 10, totalsY + 10, { width: totalsW - 20, align: "right" });
+    doc.text(`Discount: ${formatMoney(invoice.discount)}`, totalsX + 10, totalsY + 28, { width: totalsW - 20, align: "right" });
+    doc.text(`Tax: ${formatMoney(invoice.tax)}`, totalsX + 10, totalsY + 46, { width: totalsW - 20, align: "right" });
+    doc.font("Helvetica-Bold").text(`Total: ${formatMoney(invoice.total)}`, totalsX + 10, totalsY + 62, { width: totalsW - 20, align: "right" });
+}
+
+function renderInvoicePdfBlueMin(doc: PDFKit.PDFDocument, invoice: {
+    id: number;
+    currency: string;
+    subtotal: bigint;
+    discount: bigint;
+    tax: bigint;
+    total: bigint;
+    issuedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    seller: { storeName: string };
+    items: Array<{
+        description: string | null;
+        quantity: number;
+        unitPrice: bigint;
+        lineTotal: bigint;
+    }>;
+}) {
+    const pageW = doc.page.width;
+    const margin = 36;
+    const blue = "#1B4F9B";
+    const dark = "#0E1A2B";
+
+    doc.rect(0, 0, pageW, 60).fill(blue);
+    doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(16).text(invoice.seller.storeName, margin, 20);
+    doc.font("Helvetica").fontSize(10).fillColor("#FFFFFF");
+    doc.text(`Invoice #${invoice.id}`, pageW - margin - 140, 18, { width: 140, align: "right" });
+    doc.text(`Issued: ${formatDateShort(invoice.issuedAt)}`, pageW - margin - 140, 34, { width: 140, align: "right" });
+
+    // Customer box
+    doc.fillColor("#F2F5FA").rect(margin, 80, pageW - margin * 2, 60).fill();
+    doc.fillColor(dark).font("Helvetica-Bold").fontSize(11).text("Customer", margin + 10, 88);
+    doc.font("Helvetica").fontSize(10).text(`Name: ${invoice.customerName ?? "-"}`, margin + 10, 106);
+    doc.text(`Phone: ${invoice.customerPhone ?? "-"}`, margin + 10, 122);
+
+    // Items table
+    const tableY = 160;
+    const tableW = pageW - margin * 2;
+    const cols = [
+        { x: margin, w: 30, label: "#" },
+        { x: margin + 30, w: tableW - 30 - 60 - 80 - 80, label: "Description" },
+        { x: margin + (tableW - 60 - 80 - 80), w: 60, label: "Qty" },
+        { x: margin + (tableW - 80 - 80), w: 80, label: "Unit" },
+        { x: margin + (tableW - 80), w: 80, label: "Line" },
+    ];
+
+    doc.fillColor("#E6ECF7").rect(margin, tableY, tableW, 24).fill();
+    doc.fillColor(dark);
+    drawTableRow(doc, tableY, cols.map(c => ({ x: c.x, w: c.w, text: c.label, align: c.label === "Description" ? "left" : "center" })), { height: 24, fontSize: 10, bold: true });
+
+    let y = tableY + 24;
+    invoice.items.forEach((item, idx) => {
+        drawTableRow(doc, y, [
+            { x: cols[0].x, w: cols[0].w, text: String(idx + 1), align: "center" },
+            { x: cols[1].x, w: cols[1].w, text: item.description ?? "Item", align: "left" },
+            { x: cols[2].x, w: cols[2].w, text: String(item.quantity), align: "center" },
+            { x: cols[3].x, w: cols[3].w, text: formatMoney(item.unitPrice), align: "center" },
+            { x: cols[4].x, w: cols[4].w, text: formatMoney(item.lineTotal), align: "center" },
+        ], { height: 22, fontSize: 10, bold: false });
+        y += 22;
+    });
+
+    // Totals
+    const totalsW = 200;
+    const totalsX = pageW - margin - totalsW;
+    const totalsY = y + 16;
+    doc.fillColor("#F2F5FA").rect(totalsX, totalsY, totalsW, 80).fill();
+    doc.fillColor(dark).font("Helvetica").fontSize(10);
+    doc.text(`Subtotal: ${formatMoney(invoice.subtotal)}`, totalsX + 10, totalsY + 10, { width: totalsW - 20, align: "right" });
+    doc.text(`Discount: ${formatMoney(invoice.discount)}`, totalsX + 10, totalsY + 28, { width: totalsW - 20, align: "right" });
+    doc.text(`Tax: ${formatMoney(invoice.tax)}`, totalsX + 10, totalsY + 46, { width: totalsW - 20, align: "right" });
+    doc.font("Helvetica-Bold").text(`Total: ${formatMoney(invoice.total)}`, totalsX + 10, totalsY + 62, { width: totalsW - 20, align: "right" });
+}
+
+function renderInvoicePdfSlateModern(doc: PDFKit.PDFDocument, invoice: {
+    id: number;
+    currency: string;
+    subtotal: bigint;
+    discount: bigint;
+    tax: bigint;
+    total: bigint;
+    issuedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    seller: { storeName: string };
+    items: Array<{
+        description: string | null;
+        quantity: number;
+        unitPrice: bigint;
+        lineTotal: bigint;
+    }>;
+}) {
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
+    const margin = 36;
+    const slate = "#2C3E50";
+    const accent = "#7F8C8D";
+
+    doc.rect(0, 0, pageW, 18).fill(slate);
+    doc.fillColor(slate).font("Helvetica-Bold").fontSize(18).text("INVOICE", margin, 26);
+    doc.fillColor(accent).font("Helvetica").fontSize(10).text(`Invoice #${invoice.id}`, margin, 50);
+    doc.text(`Issued: ${formatDateShort(invoice.issuedAt)}`, margin, 64);
+
+    doc.fillColor("#FFFFFF").rect(margin, 90, pageW - margin * 2, 54).fillAndStroke("#FFFFFF", "#E0E4EA");
+    doc.fillColor(slate).font("Helvetica-Bold").fontSize(11).text("Bill To", margin + 10, 98);
+    doc.font("Helvetica").fontSize(10).text(`${invoice.customerName ?? "-"}`, margin + 10, 116);
+    doc.text(`${invoice.customerPhone ?? "-"}`, margin + 10, 132);
+
+    // Items
+    const tableY = 160;
+    const tableW = pageW - margin * 2;
+    const cols = [
+        { x: margin, w: 30, label: "#" },
+        { x: margin + 30, w: tableW - 30 - 60 - 80 - 80, label: "Description" },
+        { x: margin + (tableW - 60 - 80 - 80), w: 60, label: "Qty" },
+        { x: margin + (tableW - 80 - 80), w: 80, label: "Unit" },
+        { x: margin + (tableW - 80), w: 80, label: "Line" },
+    ];
+
+    doc.fillColor("#F0F2F5").rect(margin, tableY, tableW, 24).fill();
+    doc.fillColor(slate);
+    drawTableRow(doc, tableY, cols.map(c => ({ x: c.x, w: c.w, text: c.label, align: c.label === "Description" ? "left" : "center" })), { height: 24, fontSize: 10, bold: true });
+
+    let y = tableY + 24;
+    invoice.items.forEach((item, idx) => {
+        drawTableRow(doc, y, [
+            { x: cols[0].x, w: cols[0].w, text: String(idx + 1), align: "center" },
+            { x: cols[1].x, w: cols[1].w, text: item.description ?? "Item", align: "left" },
+            { x: cols[2].x, w: cols[2].w, text: String(item.quantity), align: "center" },
+            { x: cols[3].x, w: cols[3].w, text: formatMoney(item.unitPrice), align: "center" },
+            { x: cols[4].x, w: cols[4].w, text: formatMoney(item.lineTotal), align: "center" },
+        ], { height: 22, fontSize: 10, bold: false });
+        y += 22;
+    });
+
+    const totalsW = 200;
+    const totalsX = pageW - margin - totalsW;
+    const totalsY = y + 16;
+    doc.fillColor("#F0F2F5").rect(totalsX, totalsY, totalsW, 80).fill();
+    doc.fillColor(slate).font("Helvetica").fontSize(10);
+    doc.text(`Subtotal: ${formatMoney(invoice.subtotal)}`, totalsX + 10, totalsY + 10, { width: totalsW - 20, align: "right" });
+    doc.text(`Discount: ${formatMoney(invoice.discount)}`, totalsX + 10, totalsY + 28, { width: totalsW - 20, align: "right" });
+    doc.text(`Tax: ${formatMoney(invoice.tax)}`, totalsX + 10, totalsY + 46, { width: totalsW - 20, align: "right" });
+    doc.font("Helvetica-Bold").text(`Total: ${formatMoney(invoice.total)}`, totalsX + 10, totalsY + 62, { width: totalsW - 20, align: "right" });
+
+    doc.fillColor(accent).font("Helvetica").fontSize(9).text("Generated by Faqtori", margin, pageH - 30);
+}
+
+function renderInvoicePdfGreen(doc: PDFKit.PDFDocument, invoice: {
+    id: number;
+    currency: string;
+    subtotal: bigint;
+    discount: bigint;
+    tax: bigint;
+    total: bigint;
+    issuedAt: Date;
+    customerName: string | null;
+    customerPhone: string | null;
+    seller: { storeName: string };
+    items: Array<{
+        description: string | null;
+        quantity: number;
+        unitPrice: bigint;
+        lineTotal: bigint;
+    }>;
+}) {
+    const pageW = doc.page.width;
+    const pageH = doc.page.height;
+    const margin = 36;
+    const green = "#1F8E74";
+    const dark = "#0F2320";
+
+    // Header band
+    doc.rect(0, 0, pageW, 70).fill(green);
+    doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(16).text(invoice.seller.storeName, margin, 24, { width: pageW - margin * 2, align: "left" });
+
+    doc.font("Helvetica").fontSize(10).fillColor("#FFFFFF");
+    doc.text(`Invoice #${invoice.id}`, pageW - margin - 140, 18, { width: 140, align: "right" });
+    doc.text(`Issued: ${formatDateShort(invoice.issuedAt)}`, pageW - margin - 140, 34, { width: 140, align: "right" });
+    doc.text(`Currency: ${invoice.currency}`, pageW - margin - 140, 50, { width: 140, align: "right" });
+
+    // Customer / Seller boxes
+    const boxY = 90;
+    const boxH = 80;
+    const gap = 12;
+    const boxW = (pageW - margin * 2 - gap) / 2;
+
+    doc.fillColor("#F6F8FB").rect(margin, boxY, boxW, boxH).fill();
+    doc.fillColor(dark).font("Helvetica-Bold").fontSize(11).text("Customer", margin + 10, boxY + 8);
+    doc.font("Helvetica").fontSize(10).text(`Name: ${invoice.customerName ?? "-"}`, margin + 10, boxY + 28);
+    doc.text(`Phone: ${invoice.customerPhone ?? "-"}`, margin + 10, boxY + 44);
+
+    doc.fillColor("#F6F8FB").rect(margin + boxW + gap, boxY, boxW, boxH).fill();
+    doc.fillColor(dark).font("Helvetica-Bold").fontSize(11).text("Seller", margin + boxW + gap + 10, boxY + 8);
+    doc.font("Helvetica").fontSize(10).text(`Store: ${invoice.seller.storeName}`, margin + boxW + gap + 10, boxY + 28);
+
+    // Items table
+    const tableY = boxY + boxH + 24;
+    const tableW = pageW - margin * 2;
+    const cols = [
+        { x: margin, w: 30, label: "#" },
+        { x: margin + 30, w: tableW - 30 - 60 - 80 - 80, label: "Description" },
+        { x: margin + (tableW - 60 - 80 - 80), w: 60, label: "Qty" },
+        { x: margin + (tableW - 80 - 80), w: 80, label: "Unit" },
+        { x: margin + (tableW - 80), w: 80, label: "Line" },
+    ];
+
+    doc.fillColor("#EAF2EF").rect(margin, tableY, tableW, 24).fill();
+    doc.fillColor(dark);
+    drawTableRow(doc, tableY, cols.map(c => ({ x: c.x, w: c.w, text: c.label, align: c.label === "Description" ? "left" : "center" })), { height: 24, fontSize: 10, bold: true });
+
+    let y = tableY + 24;
+    invoice.items.forEach((item, idx) => {
+        const row = [
+            { x: cols[0].x, w: cols[0].w, text: String(idx + 1), align: "center" as const },
+            { x: cols[1].x, w: cols[1].w, text: item.description ?? "Item", align: "left" as const },
+            { x: cols[2].x, w: cols[2].w, text: String(item.quantity), align: "center" as const },
+            { x: cols[3].x, w: cols[3].w, text: formatMoney(item.unitPrice), align: "center" as const },
+            { x: cols[4].x, w: cols[4].w, text: formatMoney(item.lineTotal), align: "center" as const },
+        ];
+        drawTableRow(doc, y, row, { height: 22, fontSize: 10, bold: false });
+        y += 22;
+    });
+
+    // Totals box
+    const totalsW = 200;
+    const totalsX = pageW - margin - totalsW;
+    const totalsY = y + 20;
+    doc.fillColor("#F6F8FB").rect(totalsX, totalsY, totalsW, 80).fill();
+    doc.fillColor(dark).font("Helvetica").fontSize(10);
+    doc.text(`Subtotal: ${formatMoney(invoice.subtotal)}`, totalsX + 10, totalsY + 10, { width: totalsW - 20, align: "right" });
+    doc.text(`Discount: ${formatMoney(invoice.discount)}`, totalsX + 10, totalsY + 28, { width: totalsW - 20, align: "right" });
+    doc.text(`Tax: ${formatMoney(invoice.tax)}`, totalsX + 10, totalsY + 46, { width: totalsW - 20, align: "right" });
+    doc.font("Helvetica-Bold").text(`Total: ${formatMoney(invoice.total)}`, totalsX + 10, totalsY + 62, { width: totalsW - 20, align: "right" });
+
+    // Footer band
+    doc.rect(0, pageH - 50, pageW, 50).fill(green);
+    doc.fillColor("#FFFFFF").font("Helvetica").fontSize(10).text("Thank you for your business", margin, pageH - 32, { width: pageW - margin * 2, align: "left" });
+}
+
 function getInvoicePdfPaths(sellerId: number, invoiceId: number) {
     const relativeKey = path.join("invoices", String(sellerId), `${invoiceId}.pdf`);
     const fullPath = path.join(STORAGE_ROOT, relativeKey);
@@ -33,7 +458,7 @@ async function renderInvoicePdf(invoice: {
     customerName: string | null;
     customerPhone: string | null;
     extra?: unknown;
-    seller: { storeName: string };
+    seller: { storeName: string; invoiceTemplateId?: string | null };
     items: Array<{
         description: string | null;
         quantity: number;
@@ -45,6 +470,117 @@ async function renderInvoicePdf(invoice: {
     const doc = new PDFDocument({ margin: 40, size: "A4" });
     const stream = fs.createWriteStream(fullPath);
     doc.pipe(stream);
+
+    const templateId = invoice.seller.invoiceTemplateId ?? "default";
+    if (templateId === "green-v1") {
+        renderInvoicePdfGreen(doc, {
+            id: invoice.id,
+            currency: invoice.currency,
+            subtotal: invoice.subtotal,
+            discount: invoice.discount,
+            tax: invoice.tax,
+            total: invoice.total,
+            issuedAt: invoice.issuedAt,
+            customerName: invoice.customerName,
+            customerPhone: invoice.customerPhone,
+            seller: { storeName: invoice.seller.storeName },
+            items: invoice.items,
+        });
+        doc.end();
+        await new Promise<void>((resolve, reject) => {
+            stream.on("finish", () => resolve());
+            stream.on("error", reject);
+        });
+        return;
+    }
+
+    if (templateId === "blue-min") {
+        renderInvoicePdfBlueMin(doc, {
+            id: invoice.id,
+            currency: invoice.currency,
+            subtotal: invoice.subtotal,
+            discount: invoice.discount,
+            tax: invoice.tax,
+            total: invoice.total,
+            issuedAt: invoice.issuedAt,
+            customerName: invoice.customerName,
+            customerPhone: invoice.customerPhone,
+            seller: { storeName: invoice.seller.storeName },
+            items: invoice.items,
+        });
+        doc.end();
+        await new Promise<void>((resolve, reject) => {
+            stream.on("finish", () => resolve());
+            stream.on("error", reject);
+        });
+        return;
+    }
+
+    if (templateId === "slate-modern") {
+        renderInvoicePdfSlateModern(doc, {
+            id: invoice.id,
+            currency: invoice.currency,
+            subtotal: invoice.subtotal,
+            discount: invoice.discount,
+            tax: invoice.tax,
+            total: invoice.total,
+            issuedAt: invoice.issuedAt,
+            customerName: invoice.customerName,
+            customerPhone: invoice.customerPhone,
+            seller: { storeName: invoice.seller.storeName },
+            items: invoice.items,
+        });
+        doc.end();
+        await new Promise<void>((resolve, reject) => {
+            stream.on("finish", () => resolve());
+            stream.on("error", reject);
+        });
+        return;
+    }
+
+    if (templateId === "sunrise-classic") {
+        renderInvoicePdfSunriseClassic(doc, {
+            id: invoice.id,
+            currency: invoice.currency,
+            subtotal: invoice.subtotal,
+            discount: invoice.discount,
+            tax: invoice.tax,
+            total: invoice.total,
+            issuedAt: invoice.issuedAt,
+            customerName: invoice.customerName,
+            customerPhone: invoice.customerPhone,
+            seller: { storeName: invoice.seller.storeName },
+            items: invoice.items,
+        });
+        doc.end();
+        await new Promise<void>((resolve, reject) => {
+            stream.on("finish", () => resolve());
+            stream.on("error", reject);
+        });
+        return;
+    }
+
+    if (templateId === "mono-grid") {
+        renderInvoicePdfMonoGrid(doc, {
+            id: invoice.id,
+            currency: invoice.currency,
+            subtotal: invoice.subtotal,
+            discount: invoice.discount,
+            tax: invoice.tax,
+            total: invoice.total,
+            issuedAt: invoice.issuedAt,
+            customerName: invoice.customerName,
+            customerPhone: invoice.customerPhone,
+            seller: { storeName: invoice.seller.storeName },
+            items: invoice.items,
+        });
+        doc.end();
+        await new Promise<void>((resolve, reject) => {
+            stream.on("finish", () => resolve());
+            stream.on("error", reject);
+        });
+        return;
+    }
 
     doc.fontSize(18).text(invoice.seller.storeName);
     doc.moveDown(0.5);
@@ -168,7 +704,7 @@ export async function createWarehouseInvoice(params: {
 
         const variants = await tx.productVariant.findMany({
             where: { id: { in: variantIds }, product: { sellerId: params.sellerId } },
-            select: { id: true, price: true },
+            select: { id: true, price: true, productId: true },
         });
 
         if (variants.length !== variantIds.length) {
@@ -176,17 +712,50 @@ export async function createWarehouseInvoice(params: {
         }
 
         const priceByVariant = new Map<number, bigint>(variants.map((v) => [v.id, v.price]));
+        const productByVariant = new Map<number, number>(variants.map((v) => [v.id, v.productId]));
+
+        const productIds = [...new Set(variants.map((v) => v.productId))];
+        const now = new Date();
+        const discounts = await tx.productDiscount.findMany({
+            where: {
+                sellerId: params.sellerId,
+                isActive: true,
+                OR: [{ variantId: { in: variantIds } }, { productId: { in: productIds } }],
+                AND: [
+                    { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
+                    { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
+                ],
+            },
+            orderBy: [{ createdAt: "desc" }],
+            select: { id: true, productId: true, variantId: true, type: true, value: true },
+        });
+
+        const discountByVariant = new Map<number, { type: "PERCENT" | "FIXED"; value: bigint }>();
+        const discountByProduct = new Map<number, { type: "PERCENT" | "FIXED"; value: bigint }>();
+        for (const d of discounts) {
+            if (d.variantId && !discountByVariant.has(d.variantId)) {
+                discountByVariant.set(d.variantId, { type: d.type, value: d.value });
+            }
+            if (d.productId && !discountByProduct.has(d.productId)) {
+                discountByProduct.set(d.productId, { type: d.type, value: d.value });
+            }
+        }
 
         // 3) build invoice items (unitPrice from variant.price)
         const itemsPrepared = params.items.map((i) => {
             const unitPrice = priceByVariant.get(i.variantId);
             if (unitPrice == null) throw Object.assign(new Error("Variant not found"), { status: 404 });
+            const productId = productByVariant.get(i.variantId);
+            const discount =
+                discountByVariant.get(i.variantId) ??
+                (productId ? discountByProduct.get(productId) : undefined);
+            const discountedUnit = applyProductDiscount(unitPrice, discount);
 
-            const lineTotal = unitPrice * BigInt(i.quantity);
+            const lineTotal = discountedUnit * BigInt(i.quantity);
             return {
                 variantId: i.variantId,
                 quantity: i.quantity,
-                unitPrice,
+                unitPrice: discountedUnit,
                 lineTotal,
                 description: i.description ?? null,
             };
@@ -528,7 +1097,7 @@ export async function generateInvoicePdf(params: { sellerId: number; invoiceId: 
         where: { id: params.invoiceId, sellerId: params.sellerId },
         include: {
             items: { select: { description: true, quantity: true, unitPrice: true, lineTotal: true } },
-            seller: { select: { storeName: true } },
+            seller: { select: { storeName: true, invoiceTemplateId: true } },
         },
     });
 

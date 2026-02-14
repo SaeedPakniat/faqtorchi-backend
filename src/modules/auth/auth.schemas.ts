@@ -5,6 +5,7 @@ export const RegisterSchema = z.object({
     phone: z.string().min(11).max(15),
     name: z.string().min(8).max(15).optional(),
     password: z.string().min(8).max(128),
+    role: z.enum(["USER", "SELLER"]).optional(),
 }).refine((data) => data.email || data.phone,{
     message: "Either email or phone must be provided",
     path: ["email"],

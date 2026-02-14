@@ -66,17 +66,60 @@ model SellerProfile {
 
   storeName String
 
-  warehouses      Warehouse[]
-  products        Product[]
-  invoices        Invoice[]
-  customers       SellerCustomer[]
-  reminders       Reminder[]
-  discountCodes   DiscountCode[]
-  members         SellerMember[]
-  memberAuditLogs SellerMemberAuditLog[]
+  invoiceTemplateId String   @default("default")
+  baseCurrency      Currency @default(IRT)
+
+  notifyInvoiceIssued       Boolean @default(true)
+  notifyInvoiceStatusChange Boolean @default(true)
+  notifyPaymentReminder     Boolean @default(true)
+  notifyLowStock            Boolean @default(true)
+  lowStockThreshold         Int     @default(5)
+
+  warehouses       Warehouse[]
+  products         Product[]
+  productDiscounts ProductDiscount[]
+  invoices         Invoice[]
+  customers        SellerCustomer[]
+  reminders        Reminder[]
+  discountCodes    DiscountCode[]
+  members          SellerMember[]
+  memberAuditLogs  SellerMemberAuditLog[]
+  bankAccounts     BankAccount[]
+  shippingMethods  ShippingMethod[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model BankAccount {
+  id       Int           @id @default(autoincrement())
+  sellerId Int
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  name          String
+  accountNumber String
+  isActive      Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId])
+}
+
+model ShippingMethod {
+  id       Int           @id @default(autoincrement())
+  sellerId Int
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  name     String
+  price    BigInt
+  currency Currency @default(IRT)
+  isActive Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId])
 }
 
 model SellerCustomer {
@@ -200,7 +243,8 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  variants ProductVariant[]
+  variants  ProductVariant[]
+  discounts ProductDiscount[]
 
   @@index([sellerId])
 }
@@ -220,8 +264,37 @@ model ProductVariant {
   inventories   Inventory[]
   invoiceItems  InvoiceItem[]
   discountCodes DiscountCode[]
+  discounts     ProductDiscount[]
 
   @@unique([productId, sku])
+}
+
+model ProductDiscount {
+  id Int @id @default(autoincrement())
+
+  sellerId Int
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  productId Int?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  variantId Int?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  type  DiscountType
+  value BigInt
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId])
+  @@index([productId])
+  @@index([variantId])
 }
 
 model Inventory {

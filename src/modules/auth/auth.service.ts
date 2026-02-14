@@ -8,15 +8,24 @@ const REFRESH_TTL_SECONDS = Number(process.env.REFRESH_TOKEN_TTL_SECONDS ?? "259
 
 export async function registerUser(input: RegisterInput) {
     const passwordHash = await hashPassword(input.password);
+    const role = input.role === "SELLER" ? "SELLER" : "USER";
 
-    // phone must be required by schema/validator
     const user = await prisma.user.create({
         data: {
             email: input.email ?? null,
             phone: input.phone,
             name: input.name ?? null,
             passwordHash,
-            role: "USER",
+            role,
+            customerProfile: role === "USER" ? { create: {} } : undefined,
+            sellerProfile:
+                role === "SELLER"
+                    ? {
+                          create: {
+                              storeName: input.name ?? input.phone,
+                          },
+                      }
+                    : undefined,
         },
         select: {
             id: true,
@@ -31,6 +40,15 @@ export async function registerUser(input: RegisterInput) {
     return user;
 }
 
+
+export async function isPhoneRegistered(phone: string) {
+    const user = await prisma.user.findUnique({
+        where: { phone },
+        select: { id: true, isActive: true },
+    });
+
+    return Boolean(user && user.isActive);
+}
 export async function loginUser(params: {
     phone: string;
     password: string;

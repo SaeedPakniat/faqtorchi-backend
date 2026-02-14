@@ -28,3 +28,8 @@ generated/
 /dist/
 /out/
 storage/
+/Documentations/backend-doc.aux
+/Documentations/backend-doc.log
+/Documentations/backend-doc.out
+/Documentations/backend-doc.pdf
+/Documentations/backend-doc.tex

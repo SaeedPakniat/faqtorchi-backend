@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { loginUser, logoutSession, refreshSession, registerUser } from "./auth.service";
+import { RegisterSchema } from "./auth.schemas";
+import { loginUser, logoutSession, refreshSession, registerUser, isPhoneRegistered } from "./auth.service";
 
 const REFRESH_COOKIE = "refresh_token";
 
@@ -12,7 +13,8 @@ const cookieOptions = {
 
 export async function register(req: Request, res: Response, next: NextFunction) {
     try {
-        const user = await registerUser(req.body);
+        const input = RegisterSchema.parse(req.body);
+        const user = await registerUser(input);
         res.status(201).json({ user });
     } catch (e) {
         next(e);
@@ -55,6 +57,19 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
     }
 }
 
+
+
+export async function exists(req: Request, res: Response, next: NextFunction) {
+    try {
+        const phone = String(req.query.phone ?? "").trim();
+        if (!phone) return res.status(400).json({ message: "Phone is required" });
+
+        const exists = await isPhoneRegistered(phone);
+        res.json({ exists });
+    } catch (e) {
+        next(e);
+    }
+}
 
 export async function logout(req: Request, res: Response, next: NextFunction) {
     try {
